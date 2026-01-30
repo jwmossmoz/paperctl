@@ -2,18 +2,6 @@
 
 This document describes how to release a new version of paperctl.
 
-## Prerequisites
-
-1. **PyPI Trusted Publishing** must be configured:
-   - Go to https://pypi.org/manage/account/publishing/
-   - Add trusted publisher with:
-     - Owner: `jwmossmoz`
-     - Repository: `paperctl`
-     - Workflow: `release.yml`
-     - Environment: `pypi`
-
-2. **GitHub Environment** `pypi` must exist in repo settings
-
 ## Release Process
 
 ### 1. Update Version Numbers
@@ -28,15 +16,7 @@ version = "X.Y.Z"
 __version__ = "X.Y.Z"
 ```
 
-### 2. Update uv.lock
-
-Run `uv sync` to update the lockfile with the new version:
-
-```bash
-uv sync --all-groups
-```
-
-### 3. Update CHANGELOG.md
+### 2. Update CHANGELOG.md
 
 Move items from `[Unreleased]` to a new version section:
 
@@ -62,6 +42,14 @@ Update the links at the bottom:
 [X.Y.Z]: https://github.com/jwmossmoz/paperctl/releases/tag/vX.Y.Z
 ```
 
+### 3. Update uv.lock
+
+Run `uv sync` to update the lockfile with the new version:
+
+```bash
+uv sync --all-groups
+```
+
 ### 4. Commit and Tag
 
 ```bash
@@ -73,9 +61,15 @@ git push && git push --tags
 
 ### 5. Verify Release
 
-1. Check GitHub Actions: https://github.com/jwmossmoz/paperctl/actions
-2. Verify PyPI: https://pypi.org/project/paperctl/
-3. Verify GitHub Release: https://github.com/jwmossmoz/paperctl/releases
+GitHub Actions will automatically:
+- Build the package
+- Publish to PyPI (via trusted publishing)
+- Create a GitHub Release
+
+Check:
+1. GitHub Actions: https://github.com/jwmossmoz/paperctl/actions
+2. PyPI: https://pypi.org/project/paperctl/
+3. GitHub Release: https://github.com/jwmossmoz/paperctl/releases
 
 ## Version Numbering
 
@@ -87,12 +81,6 @@ This project follows [Semantic Versioning](https://semver.org/):
 
 ## Troubleshooting
 
-### PyPI Publishing Fails
-
-1. Verify trusted publisher is configured on PyPI
-2. Check the `pypi` environment exists in GitHub repo settings
-3. Review the workflow logs for specific errors
-
 ### Tag Already Exists
 
 ```bash
@@ -102,3 +90,8 @@ git tag -d vX.Y.Z
 # Delete remote tag (if pushed)
 git push origin :refs/tags/vX.Y.Z
 ```
+
+### Release Failed
+
+Check the GitHub Actions workflow logs for details:
+https://github.com/jwmossmoz/paperctl/actions
