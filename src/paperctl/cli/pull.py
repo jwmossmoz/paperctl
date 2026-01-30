@@ -1,8 +1,9 @@
 """Pull command - download logs from systems."""
 
 import asyncio
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, TextIO
 
 import typer
 from rich.console import Console
@@ -12,8 +13,7 @@ from paperctl.client import PapertrailClient
 from paperctl.client.async_api import AsyncPapertrailClient
 from paperctl.client.models import Event
 from paperctl.config import get_settings
-from paperctl.formatters import CSVFormatter, JSONFormatter
-from paperctl.utils import RateLimiter, parse_relative_time, retry_with_backoff
+from paperctl.utils import AsyncRateLimiter, parse_relative_time, retry_with_backoff
 
 console = Console()
 
@@ -107,30 +107,23 @@ def _pull_single_system(
             # Resolve system ID
             system_id = _resolve_system_id(client, system)
 
-            # Fetch events
-            events: list[Event] = []
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as progress:
                 task = progress.add_task(description="Downloading logs...", total=None)
+                events = client.search_iter(
+                    query=query,
+                    system_id=system_id,
+                    min_time=min_time,
+                    max_time=max_time,
+                )
 
-                def do_fetch() -> list[Event]:
-                    result = list(
-                        client.search_iter(
-                            query=query,
-                            system_id=system_id,
-                            min_time=min_time,
-                            max_time=max_time,
-                        )
-                    )
-                    progress.update(task, description=f"Downloaded {len(result)} events")
-                    return result
+                def update_progress(count: int) -> None:
+                    progress.update(task, description=f"Downloaded {count} events")
 
-                events = retry_with_backoff(do_fetch)
-
-            _write_output(system, events, output, format)
+                _write_output(system, events, output, format, update_progress)
 
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -159,7 +152,10 @@ async def _pull_multiple_systems(
         if output_dir:
             output_dir.mkdir(parents=True, exist_ok=True)
 
-        async with AsyncPapertrailClient(settings.api_token, timeout=settings.timeout) as client:
+        rate_limiter = AsyncRateLimiter(max_requests=25, window_seconds=5.0)
+        async with AsyncPapertrailClient(
+            settings.api_token, timeout=settings.timeout, rate_limiter=rate_limiter
+        ) as client:
             # Resolve system IDs
             console.print("Looking up systems...")
             system_list = await client.list_systems()
@@ -179,9 +175,6 @@ async def _pull_multiple_systems(
                 console.print("[red]No valid systems found[/red]")
                 raise typer.Exit(1)
 
-            # Fetch logs in parallel with rate limiting
-            rate_limiter = RateLimiter(max_requests=25, window_seconds=5.0)
-
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -195,23 +188,42 @@ async def _pull_multiple_systems(
 
                 async def fetch_system(
                     system_name: str, system_id: int, task_id: TaskID
-                ) -> tuple[str, list[Event]]:
-                    events: list[Event] = []
-                    async for event in client.search_iter(
-                        query=query,
-                        system_id=system_id,
-                        min_time=min_time,
-                        max_time=max_time,
-                    ):
-                        await rate_limiter.acquire()
-                        events.append(event)
-                        if len(events) % 100 == 0:
-                            progress.update(
-                                task_id, description=f"{system_name}: {len(events)} events"
-                            )
+                ) -> tuple[str, int, Path]:
+                    output_path = _resolve_output_path(system_name, output_dir, format)
+                    event_count = 0
+                    finalize = None
+                    with open(output_path, "w", encoding="utf-8", newline="") as handle:
+                        if format == "text":
+                            write_event = _text_event_writer(handle)
+                        elif format == "json":
+                            write_event = _json_event_writer(handle)
+                            finalize = _finalize_json
+                        elif format == "csv":
+                            write_event = _csv_event_writer(handle)
+                        else:
+                            console.print(f"[red]Invalid format: {format}[/red]")
+                            raise typer.Exit(1)
 
-                    progress.update(task_id, description=f"{system_name}: {len(events)} events ✓")
-                    return system_name, events
+                        try:
+                            async for event in client.search_iter(
+                                query=query,
+                                system_id=system_id,
+                                min_time=min_time,
+                                max_time=max_time,
+                            ):
+                                write_event(event)
+                                event_count += 1
+                                if event_count % 100 == 0:
+                                    progress.update(
+                                        task_id,
+                                        description=f"{system_name}: {event_count} events",
+                                    )
+                        finally:
+                            if finalize is not None:
+                                finalize(handle)
+
+                    progress.update(task_id, description=f"{system_name}: {event_count} events ✓")
+                    return system_name, event_count, output_path
 
                 results = await asyncio.gather(
                     *[
@@ -220,16 +232,11 @@ async def _pull_multiple_systems(
                     ]
                 )
 
-            # Write outputs
-            for system_name, events in results:
-                if output_dir:
-                    ext = {"text": "txt", "json": "json", "csv": "csv"}[format]
-                    output_file = output_dir / f"{system_name}.{ext}"
-                    _write_output(system_name, events, output_file, format)
-                else:
-                    _write_output(system_name, events, None, format)
-
-            total_events = sum(len(events) for _, events in results)
+            total_events = sum(event_count for _, event_count, _ in results)
+            for system_name, event_count, output_path in results:
+                console.print(
+                    f"[green]{system_name}: Wrote {event_count} events to {output_path}[/green]"
+                )
             console.print(
                 f"\n[green]Downloaded {total_events} total events from {len(results)} systems[/green]"
             )
@@ -264,48 +271,117 @@ def _resolve_system_id(client: PapertrailClient, system: str) -> int:
         return matching[0].id
 
 
-def _write_output(system: str, events: list[Event], output: Path | None, format: str) -> None:
-    """Write events to output."""
-    # Default to cache directory if no output specified
+def _resolve_output_path(system: str, output: Path | None, format: str) -> Path:
+    """Resolve output path, defaulting to cache directory when unset."""
     if output is None:
         cache_dir = Path.home() / ".cache" / "paperctl" / "logs"
         cache_dir.mkdir(parents=True, exist_ok=True)
         ext = {"text": "txt", "json": "json", "csv": "csv"}[format]
-        output = cache_dir / f"{system}.{ext}"
+        return cache_dir / f"{system}.{ext}"
 
-    if format == "text":
-        if output:
-            with open(output, "w") as f:
-                for event in events:
-                    timestamp = event.display_received_at
-                    source = event.source_name
-                    program = event.program
-                    message = event.message
-                    f.write(f"{timestamp} {source} {program}: {message}\n")
-            console.print(f"[green]{system}: Wrote {len(events)} events to {output}[/green]")
+    if output.is_dir():
+        ext = {"text": "txt", "json": "json", "csv": "csv"}[format]
+        return output / f"{system}.{ext}"
+
+    return output
+
+
+def _text_event_writer(handle: TextIO) -> Callable[[Event], None]:
+    def write_event(event: Event) -> None:
+        timestamp = event.display_received_at
+        source = event.source_name
+        program = event.program
+        message = event.message
+        handle.write(f"{timestamp} {source} {program}: {message}\n")
+
+    return write_event
+
+
+def _json_event_writer(handle: TextIO) -> Callable[[Event], None]:
+    import json
+
+    handle.write("[")
+    first = True
+
+    def write_event(event: Event) -> None:
+        nonlocal first
+        if not first:
+            handle.write(",\n")
+        handle.write(json.dumps(event.model_dump(mode="json")))
+        first = False
+
+    return write_event
+
+
+def _csv_event_writer(handle: TextIO) -> Callable[[Event], None]:
+    import csv
+
+    writer = csv.writer(handle)
+    writer.writerow(
+        [
+            "id",
+            "received_at",
+            "source_name",
+            "source_ip",
+            "program",
+            "severity",
+            "facility",
+            "message",
+        ]
+    )
+
+    def write_event(event: Event) -> None:
+        writer.writerow(
+            [
+                event.id,
+                event.received_at.isoformat(),
+                event.source_name,
+                event.source_ip or "",
+                event.program,
+                event.severity,
+                event.facility,
+                event.message,
+            ]
+        )
+
+    return write_event
+
+
+def _finalize_json(handle: TextIO) -> None:
+    handle.write("]\n")
+
+
+def _write_output(
+    system: str,
+    events: Iterable[Event],
+    output: Path | None,
+    format: str,
+    progress_callback: Callable[[int], None] | None = None,
+) -> None:
+    """Write events to output."""
+    output_path = _resolve_output_path(system, output, format)
+    event_count = 0
+
+    with open(output_path, "w", encoding="utf-8", newline="") as handle:
+        if format == "text":
+            write_event = _text_event_writer(handle)
+        elif format == "json":
+            write_event = _json_event_writer(handle)
+        elif format == "csv":
+            write_event = _csv_event_writer(handle)
         else:
-            for event in events:
-                timestamp = event.display_received_at
-                source = event.source_name
-                program = event.program
-                message = event.message
-                print(f"{timestamp} {source} {program}: {message}")
-    elif format == "json":
-        json_formatter = JSONFormatter()
-        result = json_formatter.format_events(events)
-        if output:
-            output.write_text(result)
-            console.print(f"[green]{system}: Wrote {len(events)} events to {output}[/green]")
-        else:
-            print(result)
-    elif format == "csv":
-        csv_formatter = CSVFormatter()
-        result = csv_formatter.format_events(events)
-        if output:
-            output.write_text(result)
-            console.print(f"[green]{system}: Wrote {len(events)} events to {output}[/green]")
-        else:
-            print(result)
-    else:
-        console.print(f"[red]Invalid format: {format}[/red]")
-        raise typer.Exit(1)
+            console.print(f"[red]Invalid format: {format}[/red]")
+            raise typer.Exit(1)
+
+        for event in events:
+            write_event(event)
+            event_count += 1
+            if progress_callback and event_count % 100 == 0:
+                progress_callback(event_count)
+
+        if format == "json":
+            handle.write("]\n")
+
+    if progress_callback:
+        progress_callback(event_count)
+    console.print(f"[green]{system}: Wrote {event_count} events to {output_path}[/green]")

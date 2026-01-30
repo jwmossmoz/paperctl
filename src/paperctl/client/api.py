@@ -8,6 +8,14 @@ import httpx
 
 from paperctl.client.exceptions import APIError, AuthenticationError, RateLimitError
 from paperctl.client.models import Archive, Event, Group, SearchResponse, System
+from paperctl.utils.rate_limiter import RateLimiter
+from paperctl.utils.retry import retry_with_backoff
+
+
+def _should_retry_error(error: Exception) -> bool:
+    if isinstance(error, APIError):
+        return error.status_code == 0 or error.status_code >= 500
+    return False
 
 
 class PapertrailClient:
@@ -15,15 +23,22 @@ class PapertrailClient:
 
     BASE_URL = "https://papertrailapp.com/api/v1"
 
-    def __init__(self, api_token: str, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        api_token: str,
+        timeout: float = 30.0,
+        rate_limiter: RateLimiter | None = None,
+    ) -> None:
         """Initialize Papertrail client.
 
         Args:
             api_token: Papertrail API token
             timeout: Request timeout in seconds
+            rate_limiter: Optional rate limiter for API requests
         """
         self.api_token = api_token
         self.timeout = timeout
+        self._rate_limiter = rate_limiter or RateLimiter()
         self._client = httpx.Client(
             base_url=self.BASE_URL,
             headers={
@@ -57,6 +72,7 @@ class PapertrailClient:
             APIError: If API returns an error
         """
         try:
+            self._rate_limiter.acquire()
             response = self._client.request(
                 method=method,
                 url=endpoint,
@@ -81,6 +97,45 @@ class PapertrailClient:
 
             result: dict[str, Any] = response.json()
             return result
+
+        except httpx.HTTPError as e:
+            raise APIError(0, f"HTTP error: {e}") from e
+
+    def _request_raw(
+        self,
+        method: str,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+    ) -> bytes:
+        """Make an API request and return raw bytes.
+
+        Args:
+            method: HTTP method
+            endpoint: API endpoint
+            params: Query parameters
+
+        Returns:
+            Response content bytes
+        """
+        try:
+            self._rate_limiter.acquire()
+            response = self._client.request(
+                method=method,
+                url=endpoint,
+                params=params,
+            )
+
+            if response.status_code == 401:
+                raise AuthenticationError("Invalid API token")
+
+            if response.status_code == 429:
+                retry_after = response.headers.get("Retry-After")
+                raise RateLimitError(retry_after=int(retry_after) if retry_after else None)
+
+            if response.status_code >= 400:
+                raise APIError(response.status_code, response.text)
+
+            return response.content
 
         except httpx.HTTPError as e:
             raise APIError(0, f"HTTP error: {e}") from e
@@ -138,7 +193,8 @@ class PapertrailClient:
         group_id: int | None = None,
         min_time: datetime | None = None,
         max_time: datetime | None = None,
-        limit: int = 1000,
+        total_limit: int | None = None,
+        page_limit: int = 1000,
     ) -> Iterator[Event]:
         """Iterate through search results with automatic pagination.
 
@@ -148,7 +204,8 @@ class PapertrailClient:
             group_id: Filter by group ID
             min_time: Start time (UTC)
             max_time: End time (UTC)
-            limit: Maximum events per request
+            total_limit: Maximum events to return (None for no limit)
+            page_limit: Maximum events per request
 
         Yields:
             Individual log events
@@ -157,14 +214,29 @@ class PapertrailClient:
         total_events = 0
 
         while True:
-            response = self.search(
-                query=query,
-                system_id=system_id,
-                group_id=group_id,
-                min_time=min_time,
-                max_time=max_time,
-                limit=limit,
-                max_id=max_id,
+            if total_limit is not None and total_limit <= total_events:
+                break
+
+            request_limit = page_limit
+            if total_limit is not None:
+                request_limit = min(page_limit, max(total_limit - total_events, 0))
+
+            def do_search(
+                request_limit: int = request_limit, max_id: str | None = max_id
+            ) -> SearchResponse:
+                return self.search(
+                    query=query,
+                    system_id=system_id,
+                    group_id=group_id,
+                    min_time=min_time,
+                    max_time=max_time,
+                    limit=request_limit,
+                    max_id=max_id,
+                )
+
+            response = retry_with_backoff(
+                do_search,
+                retry_if=_should_retry_error,
             )
 
             if not response.events:
@@ -173,6 +245,8 @@ class PapertrailClient:
             for event in response.events:
                 yield event
                 total_events += 1
+                if total_limit is not None and total_events >= total_limit:
+                    return
 
             if response.reached_beginning or response.reached_time_limit:
                 break
@@ -239,9 +313,7 @@ class PapertrailClient:
         Returns:
             Archive file content
         """
-        response = self._client.get(f"/archives/{filename}/download")
-        response.raise_for_status()
-        return response.content
+        return self._request_raw("GET", f"/archives/{filename}/download")
 
     def close(self) -> None:
         """Close the HTTP client."""
