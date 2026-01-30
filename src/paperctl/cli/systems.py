@@ -17,7 +17,9 @@ systems_app = typer.Typer(name="systems", help="Manage systems")
 
 @systems_app.command("list")
 def list_systems(
-    output: Annotated[str, typer.Option("--output", "-o", help="Output format")] = "text",
+    output: Annotated[
+        str, typer.Option("--output", "-o", help="Output format: text|json|csv")
+    ] = "text",
     api_token: Annotated[
         str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
     ] = None,
@@ -55,7 +57,9 @@ def list_systems(
 @systems_app.command("show")
 def show_system(
     system_id: Annotated[int, typer.Argument(help="System ID")],
-    output: Annotated[str, typer.Option("--output", "-o", help="Output format")] = "text",
+    output: Annotated[
+        str, typer.Option("--output", "-o", help="Output format: text|json|csv")
+    ] = "text",
     api_token: Annotated[
         str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
     ] = None,

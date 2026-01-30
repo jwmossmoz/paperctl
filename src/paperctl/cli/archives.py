@@ -18,7 +18,9 @@ archives_app = typer.Typer(name="archives", help="Manage archives")
 
 @archives_app.command("list")
 def list_archives(
-    output: Annotated[str, typer.Option("--output", "-o", help="Output format")] = "text",
+    output: Annotated[
+        str, typer.Option("--output", "-o", help="Output format: text|json|csv")
+    ] = "text",
     api_token: Annotated[
         str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
     ] = None,

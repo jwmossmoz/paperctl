@@ -16,7 +16,10 @@ console = Console()
 
 
 def search_command(
-    query: Annotated[str | None, typer.Argument(help="Search query")] = None,
+    query: Annotated[
+        str | None,
+        typer.Argument(help="Search query (text matching with AND/OR/NOT, no regex/wildcards)"),
+    ] = None,
     system: Annotated[
         str | None, typer.Option("--system", "-s", help="Filter by system name or ID")
     ] = None,
@@ -31,7 +34,9 @@ def search_command(
     follow: Annotated[
         bool, typer.Option("--follow", "-f", help="Tail mode (continuous streaming)")
     ] = False,
-    output: Annotated[str, typer.Option("--output", "-o", help="Output format")] = "text",
+    output: Annotated[
+        str, typer.Option("--output", "-o", help="Output format: text|json|csv")
+    ] = "text",
     file: Annotated[Path | None, typer.Option("--file", "-F", help="Write output to file")] = None,
     api_token: Annotated[
         str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
@@ -146,14 +151,19 @@ def search_command(
 
 
 def tail_command(
-    query: Annotated[str | None, typer.Argument(help="Search query")] = None,
+    query: Annotated[
+        str | None,
+        typer.Argument(help="Search query (text matching with AND/OR/NOT, no regex/wildcards)"),
+    ] = None,
     system: Annotated[
         str | None, typer.Option("--system", "-s", help="Filter by system name or ID")
     ] = None,
     group: Annotated[
         str | None, typer.Option("--group", "-g", help="Filter by group name or ID")
     ] = None,
-    output: Annotated[str, typer.Option("--output", "-o", help="Output format")] = "text",
+    output: Annotated[
+        str, typer.Option("--output", "-o", help="Output format: text|json|csv")
+    ] = "text",
     api_token: Annotated[
         str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
     ] = None,

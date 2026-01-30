@@ -17,7 +17,9 @@ groups_app = typer.Typer(name="groups", help="Manage groups")
 
 @groups_app.command("list")
 def list_groups(
-    output: Annotated[str, typer.Option("--output", "-o", help="Output format")] = "text",
+    output: Annotated[
+        str, typer.Option("--output", "-o", help="Output format: text|json|csv")
+    ] = "text",
     api_token: Annotated[
         str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
     ] = None,
@@ -55,7 +57,9 @@ def list_groups(
 @groups_app.command("show")
 def show_group(
     group_id: Annotated[int, typer.Argument(help="Group ID")],
-    output: Annotated[str, typer.Option("--output", "-o", help="Output format")] = "text",
+    output: Annotated[
+        str, typer.Option("--output", "-o", help="Output format: text|json|csv")
+    ] = "text",
     api_token: Annotated[
         str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
     ] = None,

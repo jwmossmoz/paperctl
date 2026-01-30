@@ -33,7 +33,14 @@ def pull_command(
     format: Annotated[
         str, typer.Option("--format", "-f", help="Output format: text|json|csv")
     ] = "text",
-    query: Annotated[str | None, typer.Option("--query", "-q", help="Search query")] = None,
+    query: Annotated[
+        str | None,
+        typer.Option(
+            "--query",
+            "-q",
+            help="Search query (text matching with AND/OR/NOT, no regex/wildcards)",
+        ),
+    ] = None,
     api_token: Annotated[
         str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
     ] = None,
