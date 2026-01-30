@@ -188,7 +188,7 @@ uv run prek install
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+Mozilla Public License 2.0 - see [LICENSE](LICENSE) for details.
 
 ## Links
 

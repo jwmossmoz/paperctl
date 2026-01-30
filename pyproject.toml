@@ -7,12 +7,12 @@ authors = [
     { name = "Jonathan Moss", email = "jmoss@mozilla.com" }
 ]
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "MPL-2.0" }
 keywords = ["papertrail", "logs", "cli", "logging"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Mozilla Public License 2.0 (MPL-2.0)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
