@@ -7,6 +7,7 @@ from paperctl import __version__
 from paperctl.cli.archives import archives_app
 from paperctl.cli.config import config_app
 from paperctl.cli.groups import groups_app
+from paperctl.cli.pull import pull_command
 from paperctl.cli.search import search_command, tail_command
 from paperctl.cli.systems import systems_app
 
@@ -42,6 +43,7 @@ def main(
 
 
 # Register commands
+app.command("pull")(pull_command)
 app.command("search")(search_command)
 app.command("tail")(tail_command)
 

@@ -1,16 +1,6 @@
 # paperctl
 
-A modern Python CLI tool for querying Papertrail logs. Built with Typer, httpx, and Pydantic.
-
-## Features
-
-- **Search logs** with flexible time parsing (`-1h`, `2024-01-01T00:00:00Z`, `1 hour ago`)
-- **Filter by system or group** by name or ID
-- **Multiple output formats** (text, JSON, CSV)
-- **Automatic pagination** through large result sets
-- **Rate limit handling** with automatic retry and backoff
-- **Configuration file support** with environment variable overrides
-- **Type-safe** with full type hints and Pydantic models
+A modern Python CLI tool for downloading logs from Papertrail. Built with Typer, httpx, and Pydantic.
 
 ## Installation
 
@@ -34,96 +24,94 @@ Set your Papertrail API token:
 export PAPERTRAIL_API_TOKEN="your_token_here"
 ```
 
-Or create a config file:
+Pull logs from a system:
 
 ```bash
-paperctl config init
+# Pull last hour of logs to stdout
+paperctl pull web-1
+
+# Save to file
+paperctl pull web-1 --output logs.txt
+
+# Pull specific time range
+paperctl pull web-1 --since -24h --until -1h
+
+# Search within logs
+paperctl pull web-1 --query "error" --output errors.txt
+
+# Export as JSON or CSV
+paperctl pull web-1 --format json --output logs.json
+paperctl pull web-1 --format csv --output logs.csv
 ```
 
-Search logs:
+## Features
 
-```bash
-# Search for errors in the last hour
-paperctl search "error" --since -1h
-
-# Search specific system with JSON output
-paperctl search --system web-1 --output json
-
-# Search with time range
-paperctl search "status=500" --since "2024-01-01T00:00:00Z" --until now
-
-# Write results to file
-paperctl search "error" --since -1h --output csv --file errors.csv
-```
+- **Simple log downloading**: Target a system by name and pull logs locally
+- **Flexible time parsing**: `-1h`, `-30m`, `1 day ago`, ISO timestamps
+- **Multiple output formats**: text, JSON, CSV
+- **Automatic pagination**: Handles large log volumes automatically
+- **Progress indicators**: Visual feedback during downloads
+- **Rate limit handling**: Automatic retry with backoff
 
 ## Commands
 
+### pull
+
+Download logs from a system.
+
+```bash
+paperctl pull <system> [OPTIONS]
+
+Options:
+  -o, --output PATH     Output file (default: stdout)
+  --since TEXT          Start time (default: -1h)
+  --until TEXT          End time (default: now)
+  -f, --format TEXT     Output format: text|json|csv (default: text)
+  -q, --query TEXT      Search query filter
+```
+
 ### search
 
-Search Papertrail logs with flexible filtering and time ranges.
+Advanced search across systems and groups.
 
 ```bash
 paperctl search [QUERY] [OPTIONS]
 
 Options:
-  -s, --system TEXT        Filter by system name or ID
-  -g, --group TEXT         Filter by group name or ID
-  --since TEXT            Start time (-1h, 2024-01-01T00:00:00Z, "1 hour ago")
-  --until TEXT            End time (now, -30m, ISO timestamp)
-  -n, --limit INTEGER     Maximum events (default: 1000)
-  -f, --follow            Tail mode (continuous streaming)
-  -o, --output TEXT       Output format: text|json|csv (default: text)
-  -F, --file PATH         Write output to file
-```
-
-### tail
-
-Tail logs in real-time (alias for `search --follow`).
-
-```bash
-paperctl tail [QUERY] [OPTIONS]
+  -s, --system TEXT     Filter by system name or ID
+  -g, --group TEXT      Filter by group name or ID
+  --since TEXT          Start time
+  --until TEXT          End time
+  -n, --limit INTEGER   Maximum events
+  -o, --output TEXT     Output format
+  -F, --file PATH       Write to file
 ```
 
 ### systems
 
-List and show system details.
+Manage systems.
 
 ```bash
-# List all systems
-paperctl systems list
-
-# Show system details
-paperctl systems show 12345
-
-# Output as JSON
-paperctl systems list --output json
+paperctl systems list              # List all systems
+paperctl systems show <id>         # Show system details
 ```
 
 ### groups
 
-List and show group details with associated systems.
+Manage groups.
 
 ```bash
-# List all groups
-paperctl groups list
-
-# Show group with systems
-paperctl groups show 12345
+paperctl groups list               # List all groups
+paperctl groups show <id>          # Show group with systems
 ```
 
 ### archives
 
-List and download archive files.
+Manage archives.
 
 ```bash
-# List available archives
-paperctl archives list
-
-# Download archive
-paperctl archives download 2024-01-01.tsv.gz
-
-# Download to specific directory
-paperctl archives download 2024-01-01.tsv.gz --output-dir /tmp
+paperctl archives list                        # List available archives
+paperctl archives download <filename>         # Download archive
 ```
 
 ### config
@@ -131,11 +119,8 @@ paperctl archives download 2024-01-01.tsv.gz --output-dir /tmp
 Manage configuration.
 
 ```bash
-# Show current config
-paperctl config show
-
-# Initialize config file
-paperctl config init
+paperctl config show               # Show current config
+paperctl config init               # Initialize config file
 ```
 
 ## Configuration
@@ -180,26 +165,20 @@ paperctl supports multiple time formats:
 uv pip install -e ".[dev]"
 
 # Run tests
-make test
-
-# Run linters
-make lint
-
-# Format code
-make format
-
-# Build package
-make build
-```
-
-## Testing
-
-```bash
-# Run all tests
 uv run pytest
 
-# Run with coverage
-uv run pytest --cov=paperctl --cov-report=html
+# Run linters
+uv run ruff check .
+uv run mypy src
+
+# Format code
+uv run ruff format .
+
+# Build package
+uv build
+
+# Install pre-commit hooks
+uv run prek install
 ```
 
 ## License
@@ -210,7 +189,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - **GitHub**: https://github.com/jwmossmoz/paperctl
 - **PyPI**: https://pypi.org/project/paperctl/
-- **Papertrail API**: https://help.papertrailapp.com/kb/how-it-works/http-api/
+- **Papertrail API**: https://www.papertrail.com/help/http-api/
 
 ## Author
 
