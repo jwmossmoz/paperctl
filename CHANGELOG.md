@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-01-29
+
+### Added
+- Partial/fuzzy matching for system names in `pull` command - use Taskcluster worker IDs like `vm-abc123` to match `vm-abc123.reddog.microsoft.com`
+- Downloads all available logs by default (no `--since` required)
+
+### Changed
+- Default `--since` for `pull` changed from `-1h` to no limit (all logs)
+
 ## [1.1.1] - 2026-01-29
 
 ### Fixed
@@ -53,7 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full type hints with Pydantic models
 - Comprehensive test coverage
 
-[Unreleased]: https://github.com/jwmossmoz/paperctl/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/jwmossmoz/paperctl/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/jwmossmoz/paperctl/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/jwmossmoz/paperctl/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/jwmossmoz/paperctl/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/jwmossmoz/paperctl/compare/v1.0.0...v1.0.1

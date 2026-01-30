@@ -11,7 +11,7 @@ from rich.progress import Progress, SpinnerColumn, TaskID, TextColumn
 
 from paperctl.client import PapertrailClient
 from paperctl.client.async_api import AsyncPapertrailClient
-from paperctl.client.models import Event
+from paperctl.client.models import Event, System
 from paperctl.config import get_settings
 from paperctl.utils import AsyncRateLimiter, parse_relative_time, retry_with_backoff
 
@@ -28,7 +28,9 @@ def pull_command(
             help="Output directory or file (default: ~/.cache/paperctl/logs/<system>)",
         ),
     ] = None,
-    since: Annotated[str, typer.Option("--since", help="Start time (default: -1h)")] = "-1h",
+    since: Annotated[
+        str | None, typer.Option("--since", help="Start time (default: all logs)")
+    ] = None,
     until: Annotated[str | None, typer.Option("--until", help="End time (default: now)")] = None,
     format: Annotated[
         str, typer.Option("--format", "-f", help="Output format: text|json|csv")
@@ -47,15 +49,21 @@ def pull_command(
 ) -> None:
     """Pull logs from one or more systems.
 
+    System names support partial matching - you can use Taskcluster worker IDs
+    like 'vm-abc123' and it will match 'vm-abc123.reddog.microsoft.com'.
+
     Examples:
-        # Single system
+        # Single system (downloads all available logs)
         paperctl pull web-1
+
+        # Partial name matching (matches vm-abc123.reddog.microsoft.com)
+        paperctl pull vm-abc123
 
         # Multiple systems (parallel with rate limiting)
         paperctl pull web-1,web-2,web-3 --output logs/
 
-        # Multiple systems with query
-        paperctl pull web-1,web-2 --query "error" --output errors/
+        # Last 24 hours only
+        paperctl pull web-1 --since -24h
 
         # Specific time range
         paperctl pull web-1 --since -24h --until -1h --output logs.txt
@@ -91,7 +99,7 @@ def pull_command(
 def _pull_single_system(
     system: str,
     output: Path | None,
-    since: str,
+    since: str | None,
     until: str | None,
     format: str,
     query: str | None,
@@ -100,12 +108,14 @@ def _pull_single_system(
     """Pull logs from a single system (sync)."""
     try:
         settings = get_settings(api_token=api_token) if api_token else get_settings()
-        min_time = parse_relative_time(since)
+        min_time = parse_relative_time(since) if since else None
         max_time = parse_relative_time(until) if until else None
 
         with PapertrailClient(settings.api_token, timeout=settings.timeout) as client:
-            # Resolve system ID
-            system_id = _resolve_system_id(client, system)
+            # Resolve system ID (supports partial matching)
+            system_id, resolved_name, was_partial = _resolve_system_id(client, system)
+            if was_partial:
+                console.print(f"[dim]Matched '{system}' → {resolved_name}[/dim]")
 
             with Progress(
                 SpinnerColumn(),
@@ -123,7 +133,7 @@ def _pull_single_system(
                 def update_progress(count: int) -> None:
                     progress.update(task, description=f"Downloaded {count} events")
 
-                _write_output(system, events, output, format, update_progress)
+                _write_output(resolved_name, events, output, format, update_progress)
 
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -136,7 +146,7 @@ def _pull_single_system(
 async def _pull_multiple_systems(
     systems: list[str],
     output_dir: Path | None,
-    since: str,
+    since: str | None,
     until: str | None,
     format: str,
     query: str | None,
@@ -145,7 +155,7 @@ async def _pull_multiple_systems(
     """Pull logs from multiple systems in parallel with rate limiting."""
     try:
         settings = get_settings(api_token=api_token) if api_token else get_settings()
-        min_time = parse_relative_time(since)
+        min_time = parse_relative_time(since) if since else None
         max_time = parse_relative_time(until) if until else None
 
         # Create output directory if specified
@@ -156,16 +166,18 @@ async def _pull_multiple_systems(
         async with AsyncPapertrailClient(
             settings.api_token, timeout=settings.timeout, rate_limiter=rate_limiter
         ) as client:
-            # Resolve system IDs
+            # Resolve system IDs with partial matching support
             console.print("Looking up systems...")
             system_list = await client.list_systems()
-            system_map = {s.name: s.id for s in system_list}
-            system_map.update({str(s.id): s.id for s in system_list})
 
             system_ids = []
             for system in systems:
-                if system in system_map:
-                    system_ids.append((system, system_map[system]))
+                resolved = _resolve_system_from_list(system, system_list)
+                if resolved:
+                    system_id, resolved_name = resolved
+                    system_ids.append((resolved_name, system_id))
+                    if resolved_name != system:
+                        console.print(f"[dim]Matched '{system}' → {resolved_name}[/dim]")
                 else:
                     console.print(
                         f"[yellow]Warning: System '{system}' not found, skipping[/yellow]"
@@ -249,26 +261,84 @@ async def _pull_multiple_systems(
         raise typer.Exit(1) from None
 
 
-def _resolve_system_id(client: PapertrailClient, system: str) -> int:
-    """Resolve system name to ID."""
+def _resolve_system_id(client: PapertrailClient, system: str) -> tuple[int, str, bool]:
+    """Resolve system name to ID with partial matching support.
+
+    Returns:
+        Tuple of (system_id, resolved_system_name, was_partial_match)
+    """
     if system.isdigit():
-        return int(system)
+        return int(system), system, False
 
     with Progress(
         SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
     ) as progress:
         progress.add_task(description="Looking up system...", total=None)
         systems = retry_with_backoff(client.list_systems)
-        matching = [s for s in systems if s.name == system]
-        if not matching:
-            console.print(f"[red]System not found: {system}[/red]")
-            console.print("\n[yellow]Available systems:[/yellow]")
-            for s in systems[:10]:
-                console.print(f"  - {s.name} (ID: {s.id})")
-            if len(systems) > 10:
-                console.print(f"  ... and {len(systems) - 10} more")
-            raise typer.Exit(1)
-        return matching[0].id
+
+    # Try exact match first
+    exact = [s for s in systems if s.name == system]
+    if exact:
+        return exact[0].id, exact[0].name, False
+
+    # Try partial/substring match (case-insensitive)
+    partial = [s for s in systems if system.lower() in s.name.lower()]
+
+    if not partial:
+        console.print(f"[red]System not found: {system}[/red]")
+        console.print("\n[yellow]Available systems:[/yellow]")
+        for s in systems[:10]:
+            console.print(f"  - {s.name} (ID: {s.id})")
+        if len(systems) > 10:
+            console.print(f"  ... and {len(systems) - 10} more")
+        raise typer.Exit(1)
+
+    if len(partial) == 1:
+        matched = partial[0]
+        return matched.id, matched.name, True
+
+    # Multiple matches - show them
+    console.print(f"[yellow]Multiple systems match '{system}':[/yellow]")
+    for s in partial[:10]:
+        console.print(f"  - {s.name} (ID: {s.id})")
+    if len(partial) > 10:
+        console.print(f"  ... and {len(partial) - 10} more")
+    console.print("\n[yellow]Please provide a more specific name or use the system ID.[/yellow]")
+    raise typer.Exit(1)
+
+
+def _resolve_system_from_list(system: str, systems: list[System]) -> tuple[int, str] | None:
+    """Resolve system name to ID from a pre-fetched list.
+
+    Supports:
+    - Exact name match
+    - Numeric ID
+    - Partial/substring match (case-insensitive)
+
+    Returns:
+        Tuple of (system_id, resolved_name) or None if not found/ambiguous
+    """
+    # Try numeric ID
+    if system.isdigit():
+        system_id = int(system)
+        for s in systems:
+            if s.id == system_id:
+                return s.id, s.name
+        return None
+
+    # Try exact match
+    for s in systems:
+        if s.name == system:
+            return s.id, s.name
+
+    # Try partial/substring match (case-insensitive)
+    partial = [s for s in systems if system.lower() in s.name.lower()]
+
+    if len(partial) == 1:
+        return partial[0].id, partial[0].name
+
+    # No match or ambiguous (multiple matches for multi-system, we skip ambiguous)
+    return None
 
 
 def _resolve_output_path(system: str, output: Path | None, format: str) -> Path:
