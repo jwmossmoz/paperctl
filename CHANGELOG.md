@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-01-29
+
+### Added
+- Async retry with exponential backoff for transient failures
+- `total_limit` parameter to `search_iter()` for capping total events returned
+- Sync `RateLimiter` class for single-threaded use
+
+### Changed
+- Rate limiting now applied per HTTP request instead of per event (fixes rate limit calculation)
+- Streaming output for pull and search commands (reduces memory usage for large downloads)
+- **Breaking**: `search_iter()` parameter `limit` renamed to `page_limit`; use `total_limit` for overall cap
+
+### Fixed
+- Rate limiter race condition in async code (now re-checks after sleep)
+
 ## [1.0.1] - 2026-01-30
 
 ### Added
@@ -33,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full type hints with Pydantic models
 - Comprehensive test coverage
 
-[Unreleased]: https://github.com/jwmossmoz/paperctl/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/jwmossmoz/paperctl/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/jwmossmoz/paperctl/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/jwmossmoz/paperctl/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/jwmossmoz/paperctl/releases/tag/v1.0.0
