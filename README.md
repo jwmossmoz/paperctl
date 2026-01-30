@@ -5,7 +5,7 @@
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![CI](https://github.com/jwmossmoz/paperctl/workflows/CI/badge.svg)](https://github.com/jwmossmoz/paperctl/actions)
 
-A modern Python CLI tool for downloading logs from Papertrail. Built with Typer, httpx, and Pydantic.
+Download logs from Papertrail. Built with Typer, httpx, and Pydantic.
 
 ## Installation
 
@@ -37,55 +37,74 @@ Set your Papertrail API token:
 export PAPERTRAIL_API_TOKEN="your_token_here"
 ```
 
-Pull logs from a system:
+Pull logs from a single system:
 
 ```bash
-# Pull last hour of logs to stdout
-paperctl pull web-1
-
-# Save to file
-paperctl pull web-1 --output logs.txt
-
-# Pull specific time range
-paperctl pull web-1 --since -24h --until -1h
-
-# Search within logs
-paperctl pull web-1 --query "error" --output errors.txt
-
-# Export as JSON or CSV
-paperctl pull web-1 --format json --output logs.json
-paperctl pull web-1 --format csv --output logs.csv
+paperctl pull web-1                    # Last hour to stdout
+paperctl pull web-1 --output logs.txt  # Save to file
+paperctl pull web-1 --since -24h       # Custom time range
 ```
 
-## Features
+Pull from multiple systems in parallel:
 
-- **Simple log downloading**: Target a system by name and pull logs locally
-- **Flexible time parsing**: `-1h`, `-30m`, `1 day ago`, ISO timestamps
-- **Multiple output formats**: text, JSON, CSV
-- **Automatic pagination**: Handles large log volumes automatically
-- **Progress indicators**: Visual feedback during downloads
-- **Rate limit handling**: Automatic retry with backoff
+```bash
+# Download from three systems at once
+paperctl pull web-1,web-2,web-3 --output logs/
+
+# Search across multiple systems
+paperctl pull web-1,web-2,db-1 --query "error" --output errors/
+
+# Works with any combination
+paperctl pull prod-*,staging-* --since -1h --output recent/
+```
+
+When you specify multiple systems, paperctl downloads them in parallel with automatic rate limiting (Papertrail allows 25 requests per 5 seconds). Each system gets its own file in the output directory.
+
+## What It Does
+
+- Downloads logs from one or more Papertrail systems
+- Handles pagination automatically (no manual limit setting)
+- Respects API rate limits (25 requests per 5 seconds)
+- Runs parallel downloads when pulling from multiple systems
+- Parses relative times like `-1h` or `2 days ago`
+- Outputs as text, JSON, or CSV
 
 ## Commands
 
 ### pull
 
-Download logs from a system.
+Download logs from systems.
 
 ```bash
-paperctl pull <system> [OPTIONS]
+paperctl pull <system>[,<system>...] [OPTIONS]
+
+Arguments:
+  <system>              System name(s) or ID(s), comma-separated
 
 Options:
-  -o, --output PATH     Output file (default: stdout)
+  -o, --output PATH     Output file (single system) or directory (multiple)
   --since TEXT          Start time (default: -1h)
   --until TEXT          End time (default: now)
   -f, --format TEXT     Output format: text|json|csv (default: text)
   -q, --query TEXT      Search query filter
 ```
 
+**Examples:**
+
+```bash
+# Single system
+paperctl pull web-1
+paperctl pull web-1 --output logs.txt
+paperctl pull web-1 --query "error" --since -24h
+
+# Multiple systems (parallel)
+paperctl pull web-1,web-2,web-3 --output logs/
+paperctl pull prod-api,prod-worker --query "500" --output errors/
+```
+
 ### search
 
-Advanced search across systems and groups.
+Search logs with filters.
 
 ```bash
 paperctl search [QUERY] [OPTIONS]
@@ -102,7 +121,7 @@ Options:
 
 ### systems
 
-Manage systems.
+List systems or show details.
 
 ```bash
 paperctl systems list              # List all systems
@@ -111,7 +130,7 @@ paperctl systems show <id>         # Show system details
 
 ### groups
 
-Manage groups.
+List groups or show details.
 
 ```bash
 paperctl groups list               # List all groups
@@ -120,7 +139,7 @@ paperctl groups show <id>          # Show group with systems
 
 ### archives
 
-Manage archives.
+Download historical archives.
 
 ```bash
 paperctl archives list                        # List available archives
@@ -138,35 +157,45 @@ paperctl config init               # Initialize config file
 
 ## Configuration
 
-Configuration priority (highest to lowest):
+Configuration is loaded from (highest priority first):
 
 1. CLI arguments
-2. Environment variables (`PAPERTRAIL_*`)
-3. Local config (`./paperctl.toml`)
-4. Home config (`~/.paperctl.toml`)
-5. XDG config (`~/.config/paperctl/config.toml`)
+2. Environment variable: `PAPERTRAIL_API_TOKEN`
+3. Local config: `./paperctl.toml`
+4. Home config: `~/.paperctl.toml`
+5. XDG config: `~/.config/paperctl/config.toml`
 
-### Environment Variables
-
-- `PAPERTRAIL_API_TOKEN` - Your Papertrail API token (required)
-
-### Config File Format
-
-Create `~/.paperctl.toml` with:
+Create `~/.paperctl.toml`:
 
 ```toml
 api_token = "your_token_here"
 timeout = 30.0  # Optional: API timeout in seconds
 ```
 
-## Time Parsing
+## Time Formats
 
-paperctl supports multiple time formats:
+Relative times:
+- `-1h`, `-30m`, `-7d` (ago)
+- `1h`, `2d` (future)
 
-- **Relative**: `-1h`, `-30m`, `-7d`, `1h`, `2d`
-- **Natural language**: `1 hour ago`, `2 days ago`
-- **ISO 8601**: `2024-01-01T00:00:00Z`
-- **Special**: `now`
+Natural language:
+- `1 hour ago`, `2 days ago`
+
+ISO 8601:
+- `2024-01-01T00:00:00Z`
+
+Special:
+- `now`
+
+## Rate Limiting
+
+Papertrail's API allows 25 requests per 5 seconds. When pulling from multiple systems, paperctl automatically:
+- Runs downloads in parallel
+- Tracks requests across all systems
+- Throttles to stay under the limit
+- Retries with backoff on 429 errors
+
+You don't need to worry about rate limits or pagination. Just specify what you want and paperctl handles the rest.
 
 ## Development
 
