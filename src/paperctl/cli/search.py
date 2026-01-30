@@ -1,16 +1,20 @@
 """Search command implementation."""
 
-from pathlib import Path
-from typing import Annotated
+from __future__ import annotations
+
+import pathlib
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 from rich.console import Console
 
 from paperctl.client import PapertrailClient
-from paperctl.client.models import Event, Group
 from paperctl.config import get_settings
-from paperctl.formatters import CSVFormatter, JSONFormatter, TextFormatter
+from paperctl.formatters import TextFormatter
 from paperctl.utils import parse_relative_time, retry_with_backoff
+
+if TYPE_CHECKING:
+    from paperctl.client.models import Group
 
 console = Console()
 
@@ -37,7 +41,9 @@ def search_command(
     output: Annotated[
         str, typer.Option("--output", "-o", help="Output format: text|json|csv")
     ] = "text",
-    file: Annotated[Path | None, typer.Option("--file", "-F", help="Write output to file")] = None,
+    file: Annotated[
+        pathlib.Path | None, typer.Option("--file", "-F", help="Write output to file")
+    ] = None,
     api_token: Annotated[
         str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
     ] = None,
@@ -56,6 +62,8 @@ def search_command(
         # Parse time parameters
         min_time = parse_relative_time(since) if since else None
         max_time = parse_relative_time(until) if until else None
+        if file is not None:
+            file = pathlib.Path(file)
 
         # Create client
         with PapertrailClient(settings.api_token, timeout=settings.timeout) as client:
@@ -68,7 +76,7 @@ def search_command(
                     system_id = int(system)
                 else:
                     # Search by name
-                    systems = client.list_systems()
+                    systems = retry_with_backoff(client.list_systems)
                     matching = [s for s in systems if s.name == system]
                     if not matching:
                         console.print(f"[red]System not found: {system}[/red]")
@@ -80,59 +88,136 @@ def search_command(
                     group_id = int(group)
                 else:
                     # Search by name
-                    groups = client.list_groups()
+                    groups = retry_with_backoff(client.list_groups)
                     matching_groups: list[Group] = [g for g in groups if g.name == group]
                     if not matching_groups:
                         console.print(f"[red]Group not found: {group}[/red]")
                         raise typer.Exit(1) from None
                     group_id = matching_groups[0].id
 
-            # Search with retry on rate limits
-            def do_search() -> list[Event]:
-                if follow:
-                    # Tail mode - not yet implemented
-                    console.print("[yellow]Tail mode not yet implemented[/yellow]")
-                    raise typer.Exit(1) from None
-                else:
-                    return list(
-                        client.search_iter(
-                            query=query,
-                            system_id=system_id,
-                            group_id=group_id,
-                            min_time=min_time,
-                            max_time=max_time,
-                            limit=limit,
-                        )
-                    )
+            if follow:
+                # Tail mode - not yet implemented
+                console.print("[yellow]Tail mode not yet implemented[/yellow]")
+                raise typer.Exit(1) from None
 
-            events = retry_with_backoff(do_search)
+            if limit <= 0:
+                console.print("[yellow]Limit must be greater than 0[/yellow]")
+                raise typer.Exit(1) from None
+
+            events = client.search_iter(
+                query=query,
+                system_id=system_id,
+                group_id=group_id,
+                min_time=min_time,
+                max_time=max_time,
+                total_limit=limit,
+            )
 
             # Format output
             if output == "text":
                 text_formatter = TextFormatter(console)
+                event_count = 0
                 if file:
-                    with open(file, "w") as f:
+                    with open(file, "w", encoding="utf-8") as handle:
                         for event in events:
-                            f.write(text_formatter.format_event(event) + "\n")
-                    console.print(f"[green]Wrote {len(events)} events to {file}[/green]")
+                            handle.write(text_formatter.format_event(event) + "\n")
+                            event_count += 1
+                    console.print(f"[green]Wrote {event_count} events to {file}[/green]")
                 else:
-                    text_formatter.print_events(events)
+                    for event in events:
+                        console.print(text_formatter.format_event(event))
+                        event_count += 1
             elif output == "json":
-                json_formatter = JSONFormatter()
-                result = json_formatter.format_events(events)
+                import json
+
+                event_count = 0
                 if file:
-                    file.write_text(result)
-                    console.print(f"[green]Wrote {len(events)} events to {file}[/green]")
+                    with open(file, "w", encoding="utf-8") as handle:
+                        handle.write("[")
+                        first = True
+                        for event in events:
+                            if not first:
+                                handle.write(",\n")
+                            handle.write(json.dumps(event.model_dump(mode="json")))
+                            first = False
+                            event_count += 1
+                        handle.write("]\n")
+                    console.print(f"[green]Wrote {event_count} events to {file}[/green]")
                 else:
-                    console.print(result)
+                    import sys as _sys
+
+                    _sys.stdout.write("[")
+                    first = True
+                    for event in events:
+                        if not first:
+                            _sys.stdout.write(",\n")
+                        _sys.stdout.write(json.dumps(event.model_dump(mode="json")))
+                        first = False
+                        event_count += 1
+                    _sys.stdout.write("]\n")
             elif output == "csv":
-                csv_formatter = CSVFormatter()
-                result = csv_formatter.format_events(events)
+                import csv
+                import sys as _sys
+
+                event_count = 0
                 if file:
-                    file.write_text(result)
-                    console.print(f"[green]Wrote {len(events)} events to {file}[/green]")
+                    with open(file, "w", encoding="utf-8", newline="") as handle:
+                        writer = csv.writer(handle)
+                        writer.writerow(
+                            [
+                                "id",
+                                "received_at",
+                                "source_name",
+                                "source_ip",
+                                "program",
+                                "severity",
+                                "facility",
+                                "message",
+                            ]
+                        )
+                        for event in events:
+                            writer.writerow(
+                                [
+                                    event.id,
+                                    event.received_at.isoformat(),
+                                    event.source_name,
+                                    event.source_ip or "",
+                                    event.program,
+                                    event.severity,
+                                    event.facility,
+                                    event.message,
+                                ]
+                            )
+                            event_count += 1
+                    console.print(f"[green]Wrote {event_count} events to {file}[/green]")
                 else:
-                    console.print(result)
+                    writer = csv.writer(_sys.stdout)
+                    writer.writerow(
+                        [
+                            "id",
+                            "received_at",
+                            "source_name",
+                            "source_ip",
+                            "program",
+                            "severity",
+                            "facility",
+                            "message",
+                        ]
+                    )
+                    for event in events:
+                        writer.writerow(
+                            [
+                                event.id,
+                                event.received_at.isoformat(),
+                                event.source_name,
+                                event.source_ip or "",
+                                event.program,
+                                event.severity,
+                                event.facility,
+                                event.message,
+                            ]
+                        )
+                        event_count += 1
             else:
                 console.print(f"[red]Invalid output format: {output}[/red]")
                 raise typer.Exit(1) from None
@@ -140,7 +225,7 @@ def search_command(
             if not file:
                 import sys as _sys
 
-                _sys.stderr.write(f"\nTotal events: {len(events)}\n")
+                _sys.stderr.write(f"\nTotal events: {event_count}\n")
 
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
