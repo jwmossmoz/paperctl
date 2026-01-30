@@ -221,8 +221,10 @@ class PapertrailClient:
             if total_limit is not None:
                 request_limit = min(page_limit, max(total_limit - total_events, 0))
 
-            response = retry_with_backoff(
-                lambda request_limit=request_limit, max_id=max_id: self.search(
+            def do_search(
+                request_limit: int = request_limit, max_id: str | None = max_id
+            ) -> SearchResponse:
+                return self.search(
                     query=query,
                     system_id=system_id,
                     group_id=group_id,
@@ -230,7 +232,10 @@ class PapertrailClient:
                     max_time=max_time,
                     limit=request_limit,
                     max_id=max_id,
-                ),
+                )
+
+            response = retry_with_backoff(
+                do_search,
                 retry_if=_should_retry_error,
             )
 
