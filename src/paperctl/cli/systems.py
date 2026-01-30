@@ -18,7 +18,9 @@ systems_app = typer.Typer(name="systems", help="Manage systems")
 @systems_app.command("list")
 def list_systems(
     output: Annotated[str, typer.Option("--output", "-o", help="Output format")] = "text",
-    api_token: Annotated[str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")] = None,
+    api_token: Annotated[
+        str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
+    ] = None,
 ) -> None:
     """List all systems.
 
@@ -33,14 +35,14 @@ def list_systems(
             systems = retry_with_backoff(client.list_systems)
 
             if output == "text":
-                formatter = TextFormatter(console)
-                formatter.print_systems(systems)
+                text_formatter = TextFormatter(console)
+                text_formatter.print_systems(systems)
             elif output == "json":
-                formatter = JSONFormatter()
-                console.print(formatter.format_systems(systems))
+                json_formatter = JSONFormatter()
+                console.print(json_formatter.format_systems(systems))
             elif output == "csv":
-                formatter = CSVFormatter()
-                console.print(formatter.format_systems(systems))
+                csv_formatter = CSVFormatter()
+                console.print(csv_formatter.format_systems(systems))
             else:
                 console.print(f"[red]Invalid output format: {output}[/red]")
                 raise typer.Exit(1) from None
@@ -54,7 +56,9 @@ def list_systems(
 def show_system(
     system_id: Annotated[int, typer.Argument(help="System ID")],
     output: Annotated[str, typer.Option("--output", "-o", help="Output format")] = "text",
-    api_token: Annotated[str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")] = None,
+    api_token: Annotated[
+        str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
+    ] = None,
 ) -> None:
     """Show system details.
 
@@ -77,11 +81,11 @@ def show_system(
                 if system.last_event_at:
                     console.print(f"Last Event: {system.last_event_at}")
             elif output == "json":
-                formatter = JSONFormatter()
-                console.print(formatter.format_any(system))
+                json_formatter = JSONFormatter()
+                console.print(json_formatter.format_any(system))
             elif output == "csv":
-                formatter = CSVFormatter()
-                console.print(formatter.format_systems([system]))
+                csv_formatter = CSVFormatter()
+                console.print(csv_formatter.format_systems([system]))
             else:
                 console.print(f"[red]Invalid output format: {output}[/red]")
                 raise typer.Exit(1) from None

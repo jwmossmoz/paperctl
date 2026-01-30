@@ -1,6 +1,5 @@
 """Search command implementation."""
 
-import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -8,6 +7,7 @@ import typer
 from rich.console import Console
 
 from paperctl.client import PapertrailClient
+from paperctl.client.models import Event, Group
 from paperctl.config import get_settings
 from paperctl.formatters import CSVFormatter, JSONFormatter, TextFormatter
 from paperctl.utils import parse_relative_time, retry_with_backoff
@@ -17,15 +17,25 @@ console = Console()
 
 def search_command(
     query: Annotated[str | None, typer.Argument(help="Search query")] = None,
-    system: Annotated[str | None, typer.Option("--system", "-s", help="Filter by system name or ID")] = None,
-    group: Annotated[str | None, typer.Option("--group", "-g", help="Filter by group name or ID")] = None,
-    since: Annotated[str | None, typer.Option("--since", help="Start time (e.g., -1h, 2024-01-01T00:00:00Z)")] = None,
+    system: Annotated[
+        str | None, typer.Option("--system", "-s", help="Filter by system name or ID")
+    ] = None,
+    group: Annotated[
+        str | None, typer.Option("--group", "-g", help="Filter by group name or ID")
+    ] = None,
+    since: Annotated[
+        str | None, typer.Option("--since", help="Start time (e.g., -1h, 2024-01-01T00:00:00Z)")
+    ] = None,
     until: Annotated[str | None, typer.Option("--until", help="End time (e.g., now, -30m)")] = None,
     limit: Annotated[int, typer.Option("--limit", "-n", help="Maximum events to return")] = 1000,
-    follow: Annotated[bool, typer.Option("--follow", "-f", help="Tail mode (continuous streaming)")] = False,
+    follow: Annotated[
+        bool, typer.Option("--follow", "-f", help="Tail mode (continuous streaming)")
+    ] = False,
     output: Annotated[str, typer.Option("--output", "-o", help="Output format")] = "text",
     file: Annotated[Path | None, typer.Option("--file", "-F", help="Write output to file")] = None,
-    api_token: Annotated[str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")] = None,
+    api_token: Annotated[
+        str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
+    ] = None,
 ) -> None:
     """Search Papertrail logs.
 
@@ -66,14 +76,14 @@ def search_command(
                 else:
                     # Search by name
                     groups = client.list_groups()
-                    matching = [g for g in groups if g.name == group]
-                    if not matching:
+                    matching_groups: list[Group] = [g for g in groups if g.name == group]
+                    if not matching_groups:
                         console.print(f"[red]Group not found: {group}[/red]")
                         raise typer.Exit(1) from None
-                    group_id = matching[0].id
+                    group_id = matching_groups[0].id
 
             # Search with retry on rate limits
-            def do_search():
+            def do_search() -> list[Event]:
                 if follow:
                     # Tail mode - not yet implemented
                     console.print("[yellow]Tail mode not yet implemented[/yellow]")
@@ -94,25 +104,25 @@ def search_command(
 
             # Format output
             if output == "text":
-                formatter = TextFormatter(console)
+                text_formatter = TextFormatter(console)
                 if file:
                     with open(file, "w") as f:
                         for event in events:
-                            f.write(formatter.format_event(event) + "\n")
+                            f.write(text_formatter.format_event(event) + "\n")
                     console.print(f"[green]Wrote {len(events)} events to {file}[/green]")
                 else:
-                    formatter.print_events(events)
+                    text_formatter.print_events(events)
             elif output == "json":
-                formatter = JSONFormatter()
-                result = formatter.format_events(events)
+                json_formatter = JSONFormatter()
+                result = json_formatter.format_events(events)
                 if file:
                     file.write_text(result)
                     console.print(f"[green]Wrote {len(events)} events to {file}[/green]")
                 else:
                     console.print(result)
             elif output == "csv":
-                formatter = CSVFormatter()
-                result = formatter.format_events(events)
+                csv_formatter = CSVFormatter()
+                result = csv_formatter.format_events(events)
                 if file:
                     file.write_text(result)
                     console.print(f"[green]Wrote {len(events)} events to {file}[/green]")
@@ -123,7 +133,9 @@ def search_command(
                 raise typer.Exit(1) from None
 
             if not file:
-                console.print(f"\n[dim]Total events: {len(events)}[/dim]", file=sys.stderr)
+                import sys as _sys
+
+                _sys.stderr.write(f"\nTotal events: {len(events)}\n")
 
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -135,10 +147,16 @@ def search_command(
 
 def tail_command(
     query: Annotated[str | None, typer.Argument(help="Search query")] = None,
-    system: Annotated[str | None, typer.Option("--system", "-s", help="Filter by system name or ID")] = None,
-    group: Annotated[str | None, typer.Option("--group", "-g", help="Filter by group name or ID")] = None,
+    system: Annotated[
+        str | None, typer.Option("--system", "-s", help="Filter by system name or ID")
+    ] = None,
+    group: Annotated[
+        str | None, typer.Option("--group", "-g", help="Filter by group name or ID")
+    ] = None,
     output: Annotated[str, typer.Option("--output", "-o", help="Output format")] = "text",
-    api_token: Annotated[str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")] = None,
+    api_token: Annotated[
+        str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
+    ] = None,
 ) -> None:
     """Tail Papertrail logs (alias for search --follow).
 

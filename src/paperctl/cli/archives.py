@@ -19,7 +19,9 @@ archives_app = typer.Typer(name="archives", help="Manage archives")
 @archives_app.command("list")
 def list_archives(
     output: Annotated[str, typer.Option("--output", "-o", help="Output format")] = "text",
-    api_token: Annotated[str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")] = None,
+    api_token: Annotated[
+        str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
+    ] = None,
 ) -> None:
     """List available archives.
 
@@ -34,14 +36,14 @@ def list_archives(
             archives = retry_with_backoff(client.list_archives)
 
             if output == "text":
-                formatter = TextFormatter(console)
-                formatter.print_archives(archives)
+                text_formatter = TextFormatter(console)
+                text_formatter.print_archives(archives)
             elif output == "json":
-                formatter = JSONFormatter()
-                console.print(formatter.format_archives(archives))
+                json_formatter = JSONFormatter()
+                console.print(json_formatter.format_archives(archives))
             elif output == "csv":
-                formatter = CSVFormatter()
-                console.print(formatter.format_archives(archives))
+                csv_formatter = CSVFormatter()
+                console.print(csv_formatter.format_archives(archives))
             else:
                 console.print(f"[red]Invalid output format: {output}[/red]")
                 raise typer.Exit(1) from None
@@ -54,8 +56,12 @@ def list_archives(
 @archives_app.command("download")
 def download_archive(
     filename: Annotated[str, typer.Argument(help="Archive filename")],
-    output_dir: Annotated[Path, typer.Option("--output-dir", "-d", help="Output directory")] = Path("."),
-    api_token: Annotated[str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")] = None,
+    output_dir: Annotated[Path, typer.Option("--output-dir", "-d", help="Output directory")] = Path(
+        "."
+    ),
+    api_token: Annotated[
+        str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
+    ] = None,
 ) -> None:
     """Download an archive file.
 

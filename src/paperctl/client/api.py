@@ -79,7 +79,8 @@ class PapertrailClient:
 
                 raise APIError(response.status_code, error_msg)
 
-            return response.json()
+            result: dict[str, Any] = response.json()
+            return result
 
         except httpx.HTTPError as e:
             raise APIError(0, f"HTTP error: {e}") from e

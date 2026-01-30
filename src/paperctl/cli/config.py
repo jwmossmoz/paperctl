@@ -60,7 +60,9 @@ def show_config() -> None:
 
 @config_app.command("init")
 def init_config(
-    api_token: Annotated[str, typer.Option("--token", prompt=True, hide_input=True, help="Papertrail API token")],
+    api_token: Annotated[
+        str, typer.Option("--token", prompt=True, hide_input=True, help="Papertrail API token")
+    ],
     output_format: Annotated[str, typer.Option("--output", help="Default output format")] = "text",
     limit: Annotated[int, typer.Option("--limit", help="Default event limit")] = 1000,
     config_path: Annotated[Path | None, typer.Option("--path", help="Config file path")] = None,

@@ -18,7 +18,9 @@ groups_app = typer.Typer(name="groups", help="Manage groups")
 @groups_app.command("list")
 def list_groups(
     output: Annotated[str, typer.Option("--output", "-o", help="Output format")] = "text",
-    api_token: Annotated[str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")] = None,
+    api_token: Annotated[
+        str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
+    ] = None,
 ) -> None:
     """List all groups.
 
@@ -33,14 +35,14 @@ def list_groups(
             groups = retry_with_backoff(client.list_groups)
 
             if output == "text":
-                formatter = TextFormatter(console)
-                formatter.print_groups(groups)
+                text_formatter = TextFormatter(console)
+                text_formatter.print_groups(groups)
             elif output == "json":
-                formatter = JSONFormatter()
-                console.print(formatter.format_groups(groups))
+                json_formatter = JSONFormatter()
+                console.print(json_formatter.format_groups(groups))
             elif output == "csv":
-                formatter = CSVFormatter()
-                console.print(formatter.format_groups(groups))
+                csv_formatter = CSVFormatter()
+                console.print(csv_formatter.format_groups(groups))
             else:
                 console.print(f"[red]Invalid output format: {output}[/red]")
                 raise typer.Exit(1) from None
@@ -54,7 +56,9 @@ def list_groups(
 def show_group(
     group_id: Annotated[int, typer.Argument(help="Group ID")],
     output: Annotated[str, typer.Option("--output", "-o", help="Output format")] = "text",
-    api_token: Annotated[str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")] = None,
+    api_token: Annotated[
+        str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
+    ] = None,
 ) -> None:
     """Show group details with systems.
 
@@ -74,16 +78,16 @@ def show_group(
                 console.print(f"System Wildcard: {group.system_wildcard or 'N/A'}")
                 console.print(f"\n[bold]Systems ({len(group.systems)}):[/bold]")
                 if group.systems:
-                    formatter = TextFormatter(console)
-                    formatter.print_systems(group.systems)
+                    text_formatter = TextFormatter(console)
+                    text_formatter.print_systems(group.systems)
                 else:
                     console.print("[dim]No systems[/dim]")
             elif output == "json":
-                formatter = JSONFormatter()
-                console.print(formatter.format_any(group))
+                json_formatter = JSONFormatter()
+                console.print(json_formatter.format_any(group))
             elif output == "csv":
-                formatter = CSVFormatter()
-                console.print(formatter.format_groups([group]))
+                csv_formatter = CSVFormatter()
+                console.print(csv_formatter.format_groups([group]))
             else:
                 console.print(f"[red]Invalid output format: {output}[/red]")
                 raise typer.Exit(1) from None
