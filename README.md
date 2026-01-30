@@ -1,5 +1,10 @@
 # paperctl
 
+[![PyPI](https://img.shields.io/pypi/v/paperctl.svg)](https://pypi.org/project/paperctl/)
+[![Python Version](https://img.shields.io/pypi/pyversions/paperctl.svg)](https://pypi.org/project/paperctl/)
+[![License](https://img.shields.io/github/license/jwmossmoz/paperctl.svg)](https://github.com/jwmossmoz/paperctl/blob/main/LICENSE)
+[![CI](https://github.com/jwmossmoz/paperctl/workflows/CI/badge.svg)](https://github.com/jwmossmoz/paperctl/actions)
+
 A modern Python CLI tool for downloading logs from Papertrail. Built with Typer, httpx, and Pydantic.
 
 ## Installation
