@@ -21,7 +21,12 @@ console = Console()
 def pull_command(
     systems: Annotated[str, typer.Argument(help="System name(s) or ID(s), comma-separated")],
     output: Annotated[
-        Path | None, typer.Option("--output", "-o", help="Output directory (for multiple) or file")
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Output directory or file (default: ~/.cache/paperctl/logs/<system>)",
+        ),
     ] = None,
     since: Annotated[str, typer.Option("--since", help="Start time (default: -1h)")] = "-1h",
     until: Annotated[str | None, typer.Option("--until", help="End time (default: now)")] = None,
@@ -254,6 +259,13 @@ def _resolve_system_id(client: PapertrailClient, system: str) -> int:
 
 def _write_output(system: str, events: list[Event], output: Path | None, format: str) -> None:
     """Write events to output."""
+    # Default to cache directory if no output specified
+    if output is None:
+        cache_dir = Path.home() / ".cache" / "paperctl" / "logs"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        ext = {"text": "txt", "json": "json", "csv": "csv"}[format]
+        output = cache_dir / f"{system}.{ext}"
+
     if format == "text":
         if output:
             with open(output, "w") as f:

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-01-30
+
+### Added
+- Parallel multi-system pull: download from multiple systems at once with `paperctl pull web-1,web-2,web-3`
+- Automatic rate limiting across parallel downloads (25 requests per 5 seconds)
+- Token bucket rate limiter for staying within API limits
+
+### Changed
+- Default output location is now `~/.cache/paperctl/logs/<system>.txt` for persistent storage
+- Each system gets its own file when pulling from multiple systems
+
 ## [1.0.0] - 2026-01-30
 
 ### Added
@@ -22,5 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full type hints with Pydantic models
 - Comprehensive test coverage
 
-[Unreleased]: https://github.com/jwmossmoz/paperctl/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/jwmossmoz/paperctl/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/jwmossmoz/paperctl/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/jwmossmoz/paperctl/releases/tag/v1.0.0
