@@ -1,0 +1,71 @@
+[project]
+name = "paperctl"
+version = "0.1.0"
+description = "Modern CLI tool for querying Papertrail logs"
+readme = "README.md"
+authors = [
+    { name = "Jonathan Moss", email = "jmoss@mozilla.com" }
+]
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["papertrail", "logs", "cli", "logging"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Logging",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "httpx>=0.28.1",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.12.0",
+    "python-dateutil>=2.9.0.post0",
+    "rich>=14.3.1",
+    "typer>=0.21.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/jwmossmoz/paperctl"
+Repository = "https://github.com/jwmossmoz/paperctl"
+Issues = "https://github.com/jwmossmoz/paperctl/issues"
+
+[project.scripts]
+paperctl = "paperctl.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.9.27,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "pytest-httpx>=0.36.0",
+    "ruff>=0.14.14",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "TCH"]
+ignore = ["E501"]  # Let formatter handle line length
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=paperctl --cov-report=term-missing --cov-report=html"
