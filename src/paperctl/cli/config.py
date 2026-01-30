@@ -32,8 +32,6 @@ def show_config() -> None:
         table.add_column("Value", style="green")
 
         table.add_row("api_token", "***" if settings.api_token else "(not set)")
-        table.add_row("default_limit", str(settings.default_limit))
-        table.add_row("default_output", settings.default_output)
         table.add_row("timeout", str(settings.timeout))
 
         console.print(table)
@@ -49,9 +47,6 @@ def show_config() -> None:
 
         console.print("\n[bold]Environment variables:[/bold]")
         console.print("  PAPERTRAIL_API_TOKEN")
-        console.print("  PAPERTRAIL_DEFAULT_LIMIT")
-        console.print("  PAPERTRAIL_DEFAULT_OUTPUT")
-        console.print("  PAPERTRAIL_TIMEOUT")
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -63,8 +58,7 @@ def init_config(
     api_token: Annotated[
         str, typer.Option("--token", prompt=True, hide_input=True, help="Papertrail API token")
     ],
-    output_format: Annotated[str, typer.Option("--output", help="Default output format")] = "text",
-    limit: Annotated[int, typer.Option("--limit", help="Default event limit")] = 1000,
+    timeout: Annotated[float, typer.Option("--timeout", help="API timeout in seconds")] = 30.0,
     config_path: Annotated[Path | None, typer.Option("--path", help="Config file path")] = None,
 ) -> None:
     """Initialize configuration file interactively.
@@ -79,9 +73,7 @@ def init_config(
 
         config_content = f"""# Papertrail CLI Configuration
 api_token = "{api_token}"
-default_output = "{output_format}"
-default_limit = {limit}
-timeout = 30.0
+timeout = {timeout}
 """
 
         config_path.write_text(config_content)

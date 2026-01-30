@@ -8,15 +8,19 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings with multiple configuration sources."""
+    """Application settings with multiple configuration sources.
 
-    api_token: str = Field(default="", description="Papertrail API token")
-    default_limit: int = Field(default=1000, description="Default event limit")
-    default_output: str = Field(default="text", description="Default output format")
+    Only api_token is configurable via environment variable.
+    Other settings have sensible defaults and can be configured via config file if needed.
+    """
+
+    api_token: str = Field(
+        default="", description="Papertrail API token", validation_alias="PAPERTRAIL_API_TOKEN"
+    )
+    # Internal settings with sensible defaults - not exposed as env vars
     timeout: float = Field(default=30.0, description="API request timeout")
 
     model_config = SettingsConfigDict(
-        env_prefix="PAPERTRAIL_",
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
@@ -29,15 +33,6 @@ class Settings(BaseSettings):
         """Validate API token is not empty."""
         if not v:
             raise ValueError("API token is required")
-        return v
-
-    @field_validator("default_output")
-    @classmethod
-    def validate_output_format(cls, v: str) -> str:
-        """Validate output format."""
-        valid_formats = ["text", "json", "csv"]
-        if v not in valid_formats:
-            raise ValueError(f"Output format must be one of {valid_formats}")
         return v
 
 
@@ -60,9 +55,7 @@ def get_config_paths() -> list[Path]:
         paths.append(home_config)
 
     # 3. XDG config
-    xdg_config_home = Path(
-        Path.home() / ".config" if not Path.home() / ".config" else Path.home() / ".config"
-    )
+    xdg_config_home = Path.home() / ".config"
     xdg_config = xdg_config_home / "paperctl" / "config.toml"
     if xdg_config.exists():
         paths.append(xdg_config)
@@ -93,7 +86,7 @@ def get_settings(**overrides: Any) -> Settings:
 
     Configuration priority (highest to lowest):
     1. Keyword arguments (overrides)
-    2. Environment variables (PAPERTRAIL_*)
+    2. Environment variable (PAPERTRAIL_API_TOKEN)
     3. Local config (./paperctl.toml)
     4. Home config (~/.paperctl.toml)
     5. XDG config (~/.config/paperctl/config.toml)

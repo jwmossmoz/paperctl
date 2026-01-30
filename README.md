@@ -9,11 +9,19 @@ A modern Python CLI tool for downloading logs from Papertrail. Built with Typer,
 
 ## Installation
 
+Using uv (recommended):
+
+```bash
+uv tool install paperctl
+```
+
+Or with pip:
+
 ```bash
 pip install paperctl
 ```
 
-Or install from source:
+From source:
 
 ```bash
 git clone https://github.com/jwmossmoz/paperctl.git
@@ -140,18 +148,15 @@ Configuration priority (highest to lowest):
 
 ### Environment Variables
 
-- `PAPERTRAIL_API_TOKEN` - API token (required)
-- `PAPERTRAIL_DEFAULT_LIMIT` - Default event limit
-- `PAPERTRAIL_DEFAULT_OUTPUT` - Default output format
-- `PAPERTRAIL_TIMEOUT` - API request timeout
+- `PAPERTRAIL_API_TOKEN` - Your Papertrail API token (required)
 
 ### Config File Format
 
+Create `~/.paperctl.toml` with:
+
 ```toml
 api_token = "your_token_here"
-default_output = "text"
-default_limit = 1000
-timeout = 30.0
+timeout = 30.0  # Optional: API timeout in seconds
 ```
 
 ## Time Parsing
