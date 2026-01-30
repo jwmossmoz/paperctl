@@ -1,6 +1,6 @@
 [project]
 name = "paperctl"
-version = "1.1.0"
+version = "1.1.1"
 description = "Modern CLI tool for querying Papertrail logs"
 readme = "README.md"
 authors = [

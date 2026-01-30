@@ -12,8 +12,8 @@ class Event(BaseModel):
     source_id: int
     source_name: str
     source_ip: str | None = None
-    facility: str
-    severity: str
+    facility: str | int | None = None
+    severity: str | int | None = None
     program: str
     message: str
     received_at: datetime

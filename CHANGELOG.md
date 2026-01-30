@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-01-29
+
+### Fixed
+- Event `facility` and `severity` fields now accept null values from API
+
 ## [1.1.0] - 2026-01-29
 
 ### Added
@@ -48,7 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full type hints with Pydantic models
 - Comprehensive test coverage
 
-[Unreleased]: https://github.com/jwmossmoz/paperctl/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/jwmossmoz/paperctl/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/jwmossmoz/paperctl/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/jwmossmoz/paperctl/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/jwmossmoz/paperctl/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/jwmossmoz/paperctl/releases/tag/v1.0.0
