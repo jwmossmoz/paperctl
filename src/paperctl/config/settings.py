@@ -6,16 +6,24 @@ from typing import Any
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_API_URL = "https://api.na-01.cloud.solarwinds.com"
+
 
 class Settings(BaseSettings):
     """Application settings with multiple configuration sources.
 
-    Only api_token is configurable via environment variable.
+    Only api_token and api_url are configurable via environment variable.
     Other settings have sensible defaults and can be configured via config file if needed.
     """
 
     api_token: str = Field(
-        default="", description="Papertrail API token", validation_alias="PAPERTRAIL_API_TOKEN"
+        default="",
+        description="SolarWinds Observability API token",
+        validation_alias="SWO_API_TOKEN",
+    )
+    api_url: str = Field(
+        default=DEFAULT_API_URL,
+        description="SolarWinds Observability API base URL",
     )
     # Internal settings with sensible defaults - not exposed as env vars
     timeout: float = Field(default=30.0, description="API request timeout")
@@ -86,7 +94,7 @@ def get_settings(**overrides: Any) -> Settings:
 
     Configuration priority (highest to lowest):
     1. Keyword arguments (overrides)
-    2. Environment variable (PAPERTRAIL_API_TOKEN)
+    2. Environment variable (SWO_API_TOKEN)
     3. Local config (./paperctl.toml)
     4. Home config (~/.paperctl.toml)
     5. XDG config (~/.config/paperctl/config.toml)

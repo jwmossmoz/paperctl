@@ -3,18 +3,15 @@
 from __future__ import annotations
 
 import pathlib
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 import typer
 from rich.console import Console
 
-from paperctl.client import PapertrailClient
+from paperctl.client import SWOClient
 from paperctl.config import get_settings
 from paperctl.formatters import TextFormatter
 from paperctl.utils import parse_relative_time, retry_with_backoff
-
-if TYPE_CHECKING:
-    from paperctl.client.models import Group
 
 console = Console()
 
@@ -25,10 +22,7 @@ def search_command(
         typer.Argument(help="Search query (text matching with AND/OR/NOT, no regex/wildcards)"),
     ] = None,
     system: Annotated[
-        str | None, typer.Option("--system", "-s", help="Filter by system name or ID")
-    ] = None,
-    group: Annotated[
-        str | None, typer.Option("--group", "-g", help="Filter by group name or ID")
+        str | None, typer.Option("--system", "-s", help="Filter by system name")
     ] = None,
     since: Annotated[
         str | None, typer.Option("--since", help="Start time (e.g., -1h, 2024-01-01T00:00:00Z)")
@@ -45,10 +39,10 @@ def search_command(
         pathlib.Path | None, typer.Option("--file", "-F", help="Write output to file")
     ] = None,
     api_token: Annotated[
-        str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
+        str | None, typer.Option("--token", envvar="SWO_API_TOKEN", help="API token")
     ] = None,
 ) -> None:
-    """Search Papertrail logs.
+    """Search SolarWinds Observability logs.
 
     Examples:
         paperctl search "error" --since -1h
@@ -56,47 +50,36 @@ def search_command(
         paperctl search "status=500" --since "2024-01-01T00:00:00Z" --until now
     """
     try:
-        # Load settings
         settings = get_settings(api_token=api_token) if api_token else get_settings()
 
-        # Parse time parameters
-        min_time = parse_relative_time(since) if since else None
-        max_time = parse_relative_time(until) if until else None
+        start_time = parse_relative_time(since) if since else None
+        end_time = parse_relative_time(until) if until else None
         if file is not None:
             file = pathlib.Path(file)
 
-        # Create client
-        with PapertrailClient(settings.api_token, timeout=settings.timeout) as client:
-            # Resolve system/group IDs
-            system_id = None
-            group_id = None
+        with SWOClient(
+            settings.api_token, api_url=settings.api_url, timeout=settings.timeout
+        ) as client:
+            # Resolve hostname via entities API
+            hostname: str | None = None
 
             if system:
-                if system.isdigit():
-                    system_id = int(system)
-                else:
-                    # Search by name
-                    systems = retry_with_backoff(client.list_systems)
-                    matching = [s for s in systems if s.name == system]
-                    if not matching:
-                        console.print(f"[red]System not found: {system}[/red]")
-                        raise typer.Exit(1) from None
-                    system_id = matching[0].id
-
-            if group:
-                if group.isdigit():
-                    group_id = int(group)
-                else:
-                    # Search by name
-                    groups = retry_with_backoff(client.list_groups)
-                    matching_groups: list[Group] = [g for g in groups if g.name == group]
-                    if not matching_groups:
-                        console.print(f"[red]Group not found: {group}[/red]")
-                        raise typer.Exit(1) from None
-                    group_id = matching_groups[0].id
+                entities = retry_with_backoff(lambda: client.list_entities(entity_type="Host"))
+                matching = [e for e in entities if e.name == system]
+                if not matching:
+                    # Try partial match
+                    matching = [e for e in entities if system.lower() in e.name.lower()]
+                if not matching:
+                    console.print(f"[red]System not found: {system}[/red]")
+                    raise typer.Exit(1) from None
+                if len(matching) > 1:
+                    console.print(f"[yellow]Multiple systems match '{system}':[/yellow]")
+                    for e in matching[:10]:
+                        console.print(f"  - {e.name}")
+                    raise typer.Exit(1) from None
+                hostname = matching[0].name
 
             if follow:
-                # Tail mode - not yet implemented
                 console.print("[yellow]Tail mode not yet implemented[/yellow]")
                 raise typer.Exit(1) from None
 
@@ -104,19 +87,18 @@ def search_command(
                 console.print("[yellow]Limit must be greater than 0[/yellow]")
                 raise typer.Exit(1) from None
 
-            events = client.search_iter(
-                query=query,
-                system_id=system_id,
-                group_id=group_id,
-                min_time=min_time,
-                max_time=max_time,
+            events = client.logs_iter(
+                filter_query=query,
+                hostname=hostname,
+                start_time=start_time,
+                end_time=end_time,
                 total_limit=limit,
             )
 
-            # Format output
+            event_count = 0
+
             if output == "text":
                 text_formatter = TextFormatter(console)
-                event_count = 0
                 if file:
                     with open(file, "w", encoding="utf-8") as handle:
                         for event in events:
@@ -130,7 +112,6 @@ def search_command(
             elif output == "json":
                 import json
 
-                event_count = 0
                 if file:
                     with open(file, "w", encoding="utf-8") as handle:
                         handle.write("[")
@@ -159,32 +140,19 @@ def search_command(
                 import csv
                 import sys as _sys
 
-                event_count = 0
+                headers = ["time", "hostname", "program", "severity", "message"]
+
                 if file:
                     with open(file, "w", encoding="utf-8", newline="") as handle:
                         writer = csv.writer(handle)
-                        writer.writerow(
-                            [
-                                "id",
-                                "received_at",
-                                "source_name",
-                                "source_ip",
-                                "program",
-                                "severity",
-                                "facility",
-                                "message",
-                            ]
-                        )
+                        writer.writerow(headers)
                         for event in events:
                             writer.writerow(
                                 [
-                                    event.id,
-                                    event.received_at.isoformat(),
-                                    event.source_name,
-                                    event.source_ip or "",
-                                    event.program,
-                                    event.severity,
-                                    event.facility,
+                                    event.time.isoformat(),
+                                    event.hostname,
+                                    event.program or "",
+                                    event.severity or "",
                                     event.message,
                                 ]
                             )
@@ -192,28 +160,14 @@ def search_command(
                     console.print(f"[green]Wrote {event_count} events to {file}[/green]")
                 else:
                     writer = csv.writer(_sys.stdout)
-                    writer.writerow(
-                        [
-                            "id",
-                            "received_at",
-                            "source_name",
-                            "source_ip",
-                            "program",
-                            "severity",
-                            "facility",
-                            "message",
-                        ]
-                    )
+                    writer.writerow(headers)
                     for event in events:
                         writer.writerow(
                             [
-                                event.id,
-                                event.received_at.isoformat(),
-                                event.source_name,
-                                event.source_ip or "",
-                                event.program,
-                                event.severity,
-                                event.facility,
+                                event.time.isoformat(),
+                                event.hostname,
+                                event.program or "",
+                                event.severity or "",
                                 event.message,
                             ]
                         )
@@ -241,19 +195,16 @@ def tail_command(
         typer.Argument(help="Search query (text matching with AND/OR/NOT, no regex/wildcards)"),
     ] = None,
     system: Annotated[
-        str | None, typer.Option("--system", "-s", help="Filter by system name or ID")
-    ] = None,
-    group: Annotated[
-        str | None, typer.Option("--group", "-g", help="Filter by group name or ID")
+        str | None, typer.Option("--system", "-s", help="Filter by system name")
     ] = None,
     output: Annotated[
         str, typer.Option("--output", "-o", help="Output format: text|json|csv")
     ] = "text",
     api_token: Annotated[
-        str | None, typer.Option("--token", envvar="PAPERTRAIL_API_TOKEN", help="API token")
+        str | None, typer.Option("--token", envvar="SWO_API_TOKEN", help="API token")
     ] = None,
 ) -> None:
-    """Tail Papertrail logs (alias for search --follow).
+    """Tail SolarWinds Observability logs (alias for search --follow).
 
     Examples:
         paperctl tail "error"
@@ -262,7 +213,6 @@ def tail_command(
     search_command(
         query=query,
         system=system,
-        group=group,
         since=None,
         until=None,
         limit=1000,

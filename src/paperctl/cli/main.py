@@ -4,16 +4,14 @@ import typer
 from rich.console import Console
 
 from paperctl import __version__
-from paperctl.cli.archives import archives_app
 from paperctl.cli.config import config_app
-from paperctl.cli.groups import groups_app
+from paperctl.cli.entities import entities_app
 from paperctl.cli.pull import pull_command
 from paperctl.cli.search import search_command, tail_command
-from paperctl.cli.systems import systems_app
 
 app = typer.Typer(
     name="paperctl",
-    help="Modern CLI tool for querying Papertrail logs",
+    help="CLI tool for querying SolarWinds Observability logs",
     no_args_is_help=True,
 )
 
@@ -38,7 +36,7 @@ def main(
         is_eager=True,
     ),
 ) -> None:
-    """paperctl - Modern CLI tool for querying Papertrail logs."""
+    """paperctl - CLI tool for querying SolarWinds Observability logs."""
     pass
 
 
@@ -48,7 +46,5 @@ app.command("search")(search_command)
 app.command("tail")(tail_command)
 
 # Register subcommands
-app.add_typer(systems_app)
-app.add_typer(groups_app)
-app.add_typer(archives_app)
+app.add_typer(entities_app)
 app.add_typer(config_app)

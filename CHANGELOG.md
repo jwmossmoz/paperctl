@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-02-20
+
+### Changed
+- **Breaking**: Migrated from Papertrail API to SolarWinds Observability API
+- Auth header changed from `X-Papertrail-Token` to `Authorization: Bearer`
+- Environment variable changed from `PAPERTRAIL_API_TOKEN` to `SWO_API_TOKEN`
+- API base URL changed to `https://api.na-01.cloud.solarwinds.com`
+- Client renamed from `PapertrailClient` to `SWOClient` (sync and async)
+- Exception base class renamed from `PapertrailError` to `SWOError`
+- Pagination changed from `min_id`/`max_id` to URL-based cursor pagination
+- `search()`/`search_iter()` renamed to `get_logs()`/`logs_iter()`
+- `list_systems()` replaced by `list_entities(entity_type="Host")`
+- Event model fields changed: `source_name` -> `hostname`, `received_at` -> `time`, removed `id`/`source_id`/`source_ip`/`facility`/`display_received_at`
+- Systems replaced by entities with string IDs and richer metadata
+
+### Added
+- `api_url` configuration field for different SWO regions
+- `entities` CLI subcommand with `list`, `show`, and `list-types` commands
+- Entity model with tags, attributes, and maintenance status
+- `--api-url` option in `config init`
+
+### Removed
+- `groups` CLI subcommand and Group model (not in SWO API)
+- `archives` CLI subcommand and Archive model (not in SWO API)
+- `systems` CLI subcommand (replaced by `entities`)
+- `--group` option from search/tail commands
+- `_request_raw()` method and `download_archive()` method
+
 ## [1.2.0] - 2026-01-29
 
 ### Added
@@ -62,7 +90,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full type hints with Pydantic models
 - Comprehensive test coverage
 
-[Unreleased]: https://github.com/jwmossmoz/paperctl/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/jwmossmoz/paperctl/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/jwmossmoz/paperctl/compare/v1.2.0...v2.0.0
 [1.2.0]: https://github.com/jwmossmoz/paperctl/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/jwmossmoz/paperctl/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/jwmossmoz/paperctl/compare/v1.0.1...v1.1.0

@@ -1,23 +1,23 @@
-"""Papertrail API client."""
+"""SolarWinds Observability API client."""
 
-from paperctl.client.api import PapertrailClient
+from paperctl.client.api import SWOClient
 from paperctl.client.exceptions import (
     APIError,
     AuthenticationError,
-    PapertrailError,
     RateLimitError,
+    SWOError,
 )
-from paperctl.client.models import Archive, Event, Group, SearchResponse, System
+from paperctl.client.models import EntitiesResponse, Entity, Event, LogsResponse, PageInfo
 
 __all__ = [
-    "PapertrailClient",
-    "PapertrailError",
+    "SWOClient",
+    "SWOError",
     "AuthenticationError",
     "RateLimitError",
     "APIError",
     "Event",
-    "SearchResponse",
-    "System",
-    "Group",
-    "Archive",
+    "LogsResponse",
+    "PageInfo",
+    "Entity",
+    "EntitiesResponse",
 ]

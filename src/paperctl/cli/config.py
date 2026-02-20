@@ -32,6 +32,7 @@ def show_config() -> None:
         table.add_column("Value", style="green")
 
         table.add_row("api_token", "***" if settings.api_token else "(not set)")
+        table.add_row("api_url", settings.api_url)
         table.add_row("timeout", str(settings.timeout))
 
         console.print(table)
@@ -41,12 +42,12 @@ def show_config() -> None:
         paths = get_config_paths()
         if paths:
             for path in paths:
-                console.print(f"  [green]✓[/green] {path}")
+                console.print(f"  [green]>[/green] {path}")
         else:
             console.print("  [dim]No config files found[/dim]")
 
         console.print("\n[bold]Environment variables:[/bold]")
-        console.print("  PAPERTRAIL_API_TOKEN")
+        console.print("  SWO_API_TOKEN")
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -56,8 +57,18 @@ def show_config() -> None:
 @config_app.command("init")
 def init_config(
     api_token: Annotated[
-        str, typer.Option("--token", prompt=True, hide_input=True, help="Papertrail API token")
+        str,
+        typer.Option(
+            "--token",
+            prompt="SolarWinds Observability API token",
+            hide_input=True,
+            help="SWO API token",
+        ),
     ],
+    api_url: Annotated[
+        str,
+        typer.Option("--api-url", help="API base URL"),
+    ] = "https://api.na-01.cloud.solarwinds.com",
     timeout: Annotated[float, typer.Option("--timeout", help="API timeout in seconds")] = 30.0,
     config_path: Annotated[Path | None, typer.Option("--path", help="Config file path")] = None,
 ) -> None:
@@ -66,13 +77,15 @@ def init_config(
     Examples:
         paperctl config init
         paperctl config init --path ./paperctl.toml
+        paperctl config init --api-url https://api.eu-01.cloud.solarwinds.com
     """
     try:
         if config_path is None:
             config_path = DEFAULT_CONFIG_PATH
 
-        config_content = f"""# Papertrail CLI Configuration
+        config_content = f"""# SolarWinds Observability CLI Configuration
 api_token = "{api_token}"
+api_url = "{api_url}"
 timeout = {timeout}
 """
 

@@ -1,14 +1,14 @@
 [project]
 name = "paperctl"
-version = "1.2.0"
-description = "Modern CLI tool for querying Papertrail logs"
+version = "2.0.0"
+description = "CLI tool for querying SolarWinds Observability logs"
 readme = "README.md"
 authors = [
     { name = "Jonathan Moss", email = "jmoss@mozilla.com" }
 ]
 requires-python = ">=3.11"
 license = { text = "MPL-2.0" }
-keywords = ["papertrail", "logs", "cli", "logging"]
+keywords = ["solarwinds", "observability", "logs", "cli", "logging", "papertrail"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

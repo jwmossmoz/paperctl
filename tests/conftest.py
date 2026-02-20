@@ -2,7 +2,7 @@
 
 import pytest
 
-from paperctl.client import PapertrailClient
+from paperctl.client import SWOClient
 
 
 @pytest.fixture
@@ -12,6 +12,6 @@ def api_token() -> str:
 
 
 @pytest.fixture
-def mock_client(api_token: str) -> PapertrailClient:
-    """Create a mock Papertrail client."""
-    return PapertrailClient(api_token)
+def mock_client(api_token: str) -> SWOClient:
+    """Create a mock SWO client."""
+    return SWOClient(api_token)

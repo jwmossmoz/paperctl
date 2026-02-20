@@ -3,7 +3,7 @@
 from rich.console import Console
 from rich.table import Table
 
-from paperctl.client.models import Archive, Event, Group, System
+from paperctl.client.models import Entity, Event
 
 
 class TextFormatter:
@@ -26,11 +26,11 @@ class TextFormatter:
         Returns:
             Formatted text
         """
-        timestamp = event.display_received_at
-        source = event.source_name
-        program = event.program
+        timestamp = event.time.strftime("%Y-%m-%d %H:%M:%S")
+        hostname = event.hostname
+        program = event.program or ""
         message = event.message
-        return f"{timestamp} {source} {program}: {message}"
+        return f"{timestamp} {hostname} {program}: {message}"
 
     def print_events(self, events: list[Event]) -> None:
         """Print events to console.
@@ -41,72 +41,31 @@ class TextFormatter:
         for event in events:
             self.console.print(self.format_event(event))
 
-    def print_systems(self, systems: list[System]) -> None:
-        """Print systems table.
+    def print_entities(self, entities: list[Entity]) -> None:
+        """Print entities table.
 
         Args:
-            systems: Systems to print
+            entities: Entities to print
         """
-        table = Table(title="Systems")
+        table = Table(title="Entities")
         table.add_column("ID", style="cyan")
+        table.add_column("Type", style="blue")
         table.add_column("Name", style="green")
-        table.add_column("IP Address", style="yellow")
-        table.add_column("Last Event", style="magenta")
+        table.add_column("Last Seen", style="magenta")
+        table.add_column("Maintenance", style="yellow")
 
-        for system in systems:
-            last_event = (
-                system.last_event_at.strftime("%Y-%m-%d %H:%M:%S")
-                if system.last_event_at
+        for entity in entities:
+            last_seen = (
+                entity.last_seen_time.strftime("%Y-%m-%d %H:%M:%S")
+                if entity.last_seen_time
                 else "N/A"
             )
             table.add_row(
-                str(system.id),
-                system.name,
-                system.ip_address or "N/A",
-                last_event,
-            )
-
-        self.console.print(table)
-
-    def print_groups(self, groups: list[Group]) -> None:
-        """Print groups table.
-
-        Args:
-            groups: Groups to print
-        """
-        table = Table(title="Groups")
-        table.add_column("ID", style="cyan")
-        table.add_column("Name", style="green")
-        table.add_column("Systems", style="yellow")
-
-        for group in groups:
-            system_count = len(group.systems)
-            table.add_row(
-                str(group.id),
-                group.name,
-                str(system_count),
-            )
-
-        self.console.print(table)
-
-    def print_archives(self, archives: list[Archive]) -> None:
-        """Print archives table.
-
-        Args:
-            archives: Archives to print
-        """
-        table = Table(title="Archives")
-        table.add_column("Filename", style="cyan")
-        table.add_column("Start", style="green")
-        table.add_column("End", style="yellow")
-        table.add_column("Size", style="magenta")
-
-        for archive in archives:
-            table.add_row(
-                archive.filename,
-                archive.start.strftime("%Y-%m-%d %H:%M:%S"),
-                archive.end.strftime("%Y-%m-%d %H:%M:%S"),
-                archive.formatted_filesize,
+                entity.id,
+                entity.type,
+                entity.name,
+                last_seen,
+                "Yes" if entity.in_maintenance else "No",
             )
 
         self.console.print(table)

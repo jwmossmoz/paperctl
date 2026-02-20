@@ -1,4 +1,4 @@
-"""Async Papertrail API client for parallel requests."""
+"""Async SolarWinds Observability API client for parallel requests."""
 
 from collections.abc import AsyncIterator
 from datetime import datetime
@@ -7,9 +7,11 @@ from typing import Any
 import httpx
 
 from paperctl.client.exceptions import APIError, AuthenticationError, RateLimitError
-from paperctl.client.models import Event, SearchResponse, System
+from paperctl.client.models import Entity, Event, LogsResponse
 from paperctl.utils.rate_limiter import AsyncRateLimiter
 from paperctl.utils.retry import async_retry_with_backoff
+
+DEFAULT_API_URL = "https://api.na-01.cloud.solarwinds.com"
 
 
 def _should_retry_error(error: Exception) -> bool:
@@ -18,31 +20,32 @@ def _should_retry_error(error: Exception) -> bool:
     return False
 
 
-class AsyncPapertrailClient:
-    """Async client for Papertrail API."""
-
-    BASE_URL = "https://papertrailapp.com/api/v1"
+class AsyncSWOClient:
+    """Async client for SolarWinds Observability API."""
 
     def __init__(
         self,
         api_token: str,
+        api_url: str = DEFAULT_API_URL,
         timeout: float = 30.0,
         rate_limiter: AsyncRateLimiter | None = None,
     ) -> None:
         """Initialize async client.
 
         Args:
-            api_token: Papertrail API token
+            api_token: SolarWinds Observability API token
+            api_url: Base URL for the API
             timeout: Request timeout in seconds
             rate_limiter: Optional rate limiter for API requests
         """
         self.api_token = api_token
+        self.api_url = api_url
         self.timeout = timeout
         self._rate_limiter = rate_limiter or AsyncRateLimiter()
         self._client = httpx.AsyncClient(
-            base_url=self.BASE_URL,
+            base_url=api_url,
             headers={
-                "X-Papertrail-Token": api_token,
+                "Authorization": f"Bearer {api_token}",
                 "Accept": "application/json",
             },
             timeout=timeout,
@@ -53,13 +56,15 @@ class AsyncPapertrailClient:
         method: str,
         endpoint: str,
         params: dict[str, Any] | None = None,
+        url: str | None = None,
     ) -> dict[str, Any]:
         """Make async API request.
 
         Args:
             method: HTTP method
-            endpoint: API endpoint
+            endpoint: API endpoint (ignored if url is provided)
             params: Query parameters
+            url: Full URL to request (for pagination)
 
         Returns:
             Response JSON
@@ -71,7 +76,11 @@ class AsyncPapertrailClient:
         """
         try:
             await self._rate_limiter.acquire()
-            response = await self._client.request(method=method, url=endpoint, params=params)
+
+            if url:
+                response = await self._client.request(method=method, url=url)
+            else:
+                response = await self._client.request(method=method, url=endpoint, params=params)
 
             if response.status_code == 401:
                 raise AuthenticationError("Invalid API token")
@@ -93,120 +102,184 @@ class AsyncPapertrailClient:
         except httpx.HTTPError as e:
             raise APIError(0, f"HTTP error: {e}") from e
 
-    async def search(
+    async def get_logs(
         self,
-        query: str | None = None,
-        system_id: int | None = None,
-        min_time: datetime | None = None,
-        max_time: datetime | None = None,
-        limit: int = 1000,
-        max_id: str | None = None,
-    ) -> SearchResponse:
-        """Search for log events.
+        filter_query: str | None = None,
+        hostname: str | None = None,
+        group: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        page_size: int = 1000,
+        direction: str = "backward",
+        page_url: str | None = None,
+    ) -> LogsResponse:
+        """Fetch logs from the API.
 
         Args:
-            query: Search query
-            system_id: Filter by system ID
-            min_time: Start time (UTC)
-            max_time: End time (UTC)
-            limit: Maximum events per request
-            max_id: Maximum event ID for pagination
+            filter_query: Filter query string
+            hostname: Filter by hostname (prepended as host:"value")
+            group: Filter by group name
+            start_time: Start time (UTC)
+            end_time: End time (UTC)
+            page_size: Maximum events per page
+            direction: Sort direction (backward or forward)
+            page_url: Full URL for pagination (overrides other params)
 
         Returns:
-            Search response with events
+            Logs response with events and page info
         """
-        params: dict[str, Any] = {"limit": limit}
+        if page_url:
+            data = await async_retry_with_backoff(
+                lambda: self._request("GET", "", url=page_url),
+                retry_if=_should_retry_error,
+            )
+            return LogsResponse.model_validate(data)
 
-        if query:
-            params["q"] = query
-        if system_id:
-            params["system_id"] = system_id
-        if min_time:
-            params["min_time"] = int(min_time.timestamp())
-        if max_time:
-            params["max_time"] = int(max_time.timestamp())
-        if max_id:
-            params["max_id"] = max_id
+        params: dict[str, Any] = {
+            "pageSize": page_size,
+            "direction": direction,
+        }
+
+        filter_parts: list[str] = []
+        if hostname:
+            filter_parts.append(f'host:"{hostname}"')
+        if group:
+            filter_parts.append(f'group:"{group}"')
+        if filter_query:
+            filter_parts.append(filter_query)
+
+        if filter_parts:
+            params["filter"] = " ".join(filter_parts)
+
+        if start_time:
+            params["startTime"] = start_time.isoformat()
+        if end_time:
+            params["endTime"] = end_time.isoformat()
 
         data = await async_retry_with_backoff(
-            lambda: self._request("GET", "/events/search.json", params=params),
+            lambda: self._request("GET", "/v1/logs", params=params),
             retry_if=_should_retry_error,
         )
-        return SearchResponse.model_validate(data)
+        return LogsResponse.model_validate(data)
 
-    async def search_iter(
+    async def logs_iter(
         self,
-        query: str | None = None,
-        system_id: int | None = None,
-        min_time: datetime | None = None,
-        max_time: datetime | None = None,
+        filter_query: str | None = None,
+        hostname: str | None = None,
+        group: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         total_limit: int | None = None,
-        page_limit: int = 1000,
+        page_size: int = 1000,
     ) -> AsyncIterator[Event]:
-        """Iterate through search results with automatic pagination.
+        """Iterate through logs with automatic pagination.
 
         Args:
-            query: Search query
-            system_id: Filter by system ID
-            min_time: Start time (UTC)
-            max_time: End time (UTC)
+            filter_query: Filter query string
+            hostname: Filter by hostname
+            group: Filter by group name
+            start_time: Start time (UTC)
+            end_time: End time (UTC)
             total_limit: Maximum events to return (None for no limit)
-            page_limit: Maximum events per request
+            page_size: Maximum events per page
 
         Yields:
             Individual log events
         """
-        max_id = None
+        next_page: str | None = None
         total_events = 0
 
         while True:
             if total_limit is not None and total_limit <= total_events:
                 break
 
-            request_limit = page_limit
+            request_size = page_size
             if total_limit is not None:
-                request_limit = min(page_limit, max(total_limit - total_events, 0))
+                request_size = min(page_size, max(total_limit - total_events, 0))
 
-            response = await self.search(
-                query=query,
-                system_id=system_id,
-                min_time=min_time,
-                max_time=max_time,
-                limit=request_limit,
-                max_id=max_id,
+            response = await self.get_logs(
+                filter_query=filter_query,
+                hostname=hostname,
+                group=group,
+                start_time=start_time,
+                end_time=end_time,
+                page_size=request_size,
+                page_url=next_page,
             )
 
-            if not response.events:
+            if not response.logs:
                 break
 
-            for event in response.events:
+            for event in response.logs:
                 yield event
                 total_events += 1
                 if total_limit is not None and total_events >= total_limit:
                     return
 
-            if response.reached_beginning or response.reached_time_limit:
+            if not response.page_info.next_page:
                 break
 
-            max_id = response.min_id
+            next_page = response.page_info.next_page
 
-    async def list_systems(self) -> list[System]:
-        """List all systems.
+    async def list_entities(
+        self,
+        entity_type: str = "Host",
+        name: str | None = None,
+        page_size: int = 100,
+    ) -> list[Entity]:
+        """List entities, auto-paginating through all pages.
+
+        Args:
+            entity_type: Entity type filter (e.g., "Host")
+            name: Optional name filter
+            page_size: Page size for each request
 
         Returns:
-            List of systems
+            List of all entities
         """
-        data = await async_retry_with_backoff(
-            lambda: self._request("GET", "/systems.json"),
-            retry_if=_should_retry_error,
-        )
-        return [System.model_validate(s) for s in data]
+        from paperctl.client.models import EntitiesResponse
+
+        params: dict[str, Any] = {
+            "type": entity_type,
+            "pageSize": page_size,
+        }
+        if name:
+            params["name"] = name
+
+        all_entities: list[Entity] = []
+        next_page: str | None = None
+
+        while True:
+            if next_page:
+                page_url: str = next_page
+
+                async def _fetch_page(u: str = page_url) -> dict[str, Any]:
+                    return await self._request("GET", "", url=u)
+
+                data = await async_retry_with_backoff(
+                    _fetch_page,
+                    retry_if=_should_retry_error,
+                )
+            else:
+                data = await async_retry_with_backoff(
+                    lambda: self._request("GET", "/v1/entities", params=params),
+                    retry_if=_should_retry_error,
+                )
+
+            resp = EntitiesResponse.model_validate(data)
+            all_entities.extend(resp.entities)
+
+            if not resp.page_info.next_page:
+                break
+            next_page = resp.page_info.next_page
+
+        return all_entities
 
     async def close(self) -> None:
         """Close the HTTP client."""
         await self._client.aclose()
 
-    async def __aenter__(self) -> "AsyncPapertrailClient":
+    async def __aenter__(self) -> "AsyncSWOClient":
         """Async context manager entry."""
         return self
 

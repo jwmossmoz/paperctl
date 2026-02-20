@@ -1,3 +1,3 @@
-"""Modern CLI tool for querying Papertrail logs."""
+"""CLI tool for querying SolarWinds Observability logs."""
 
-__version__ = "1.2.0"
+__version__ = "2.0.0"

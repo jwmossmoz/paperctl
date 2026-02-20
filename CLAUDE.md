@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**paperctl** is a modern Python CLI tool for downloading logs from Papertrail. It handles pagination automatically, respects API rate limits (25 req/5s), and supports parallel downloads from multiple systems.
+**paperctl** is a Python CLI tool for downloading logs from SolarWinds Observability (formerly Papertrail). It handles pagination automatically, respects API rate limits, and supports parallel downloads from multiple systems.
 
 Built with: Typer (CLI), httpx (HTTP), Pydantic (models/config), Rich (terminal output), python-dateutil (time parsing)
 
@@ -17,7 +17,7 @@ uv run prek install               # Install pre-commit hooks (prek, not pre-comm
 
 # Testing
 uv run pytest                     # Run all tests
-uv run pytest tests/test_client.py::test_search  # Run single test
+uv run pytest tests/test_client.py::test_get_logs  # Run single test
 uv run pytest -v                  # Verbose output
 uv run pytest --cov-report=html   # Generate HTML coverage report
 
@@ -39,16 +39,17 @@ uv run paperctl pull web-1 --output test.txt
 ### Core Components
 
 **Client Layer** (`src/paperctl/client/`):
-- `api.py` - Sync `PapertrailClient` with automatic pagination via `search_iter()`
-- `async_api.py` - Async `AsyncPapertrailClient` for parallel requests
-- `models.py` - Pydantic models: `Event`, `System`, `Group`, `Archive`, `SearchResponse`
-- `exceptions.py` - Custom exceptions: `APIError`, `RateLimitError`, `AuthenticationError`
+- `api.py` - Sync `SWOClient` with automatic pagination via `logs_iter()`
+- `async_api.py` - Async `AsyncSWOClient` for parallel requests
+- `models.py` - Pydantic models: `Event`, `Entity`, `LogsResponse`, `EntitiesResponse`, `PageInfo`
+- `exceptions.py` - Custom exceptions: `SWOError`, `APIError`, `RateLimitError`, `AuthenticationError`
 
 **CLI Layer** (`src/paperctl/cli/`):
 - `main.py` - Typer app, registers subcommands
 - `pull.py` - Main command: detects single vs multi-system by comma, uses sync or async client
 - `search.py` - Search logs with filters, supports tail mode
-- `systems.py`, `groups.py`, `archives.py`, `config.py` - Other subcommands
+- `entities.py` - Entity management: list, show, list-types
+- `config.py` - Configuration management
 
 **Utils** (`src/paperctl/utils/`):
 - `rate_limiter.py` - Token bucket rate limiter for parallel downloads (25 req/5s)
@@ -56,8 +57,8 @@ uv run paperctl pull web-1 --output test.txt
 - `time.py` - Parse relative times (`-1h`, `2 days ago`) and ISO timestamps
 
 **Config** (`src/paperctl/config/`):
-- `settings.py` - Pydantic settings with env var support (`PAPERTRAIL_API_TOKEN`)
-- Priority: CLI args → env vars → local config → home config → XDG config
+- `settings.py` - Pydantic settings with env var support (`SWO_API_TOKEN`)
+- Priority: CLI args -> env vars -> local config -> home config -> XDG config
 
 **Formatters** (`src/paperctl/formatters/`):
 - `text.py` - Rich tables for terminal output
@@ -66,15 +67,17 @@ uv run paperctl pull web-1 --output test.txt
 
 ### Key Design Patterns
 
-**Automatic Pagination**: Both sync and async clients use `search_iter()` to automatically handle Papertrail's `min_id` pagination. Users never think about limits or page tokens.
+**SolarWinds Observability API**: Uses `https://api.na-01.cloud.solarwinds.com` with Bearer token auth. Pagination is URL-cursor based (`pageInfo.nextPage`). Systems are modeled as entities with string IDs.
+
+**Automatic Pagination**: Both sync and async clients use `logs_iter()` to automatically handle SWO's cursor-based pagination. Users never think about cursors or page tokens.
 
 **Parallel vs Serial**: The `pull` command detects comma-separated systems and switches between:
-- Single system: Uses sync `PapertrailClient` with progress spinner
-- Multiple systems: Uses async `AsyncPapertrailClient` with per-system progress, shared `RateLimiter`
+- Single system: Uses sync `SWOClient` with progress spinner
+- Multiple systems: Uses async `AsyncSWOClient` with per-system progress, shared `RateLimiter`
 
-**Rate Limiting**: Papertrail API limit is 25 requests per 5 seconds. The token bucket rate limiter (`RateLimiter`) tracks requests across all parallel downloads and throttles to stay within limits.
+**Rate Limiting**: The token bucket rate limiter (`RateLimiter`) tracks requests across all parallel downloads and throttles to stay within limits.
 
-**Query Syntax Limitation**: Papertrail search does **not** support regex or wildcards. Only text matching with boolean operators (AND/OR/NOT). This is documented in all `--query` help text.
+**Query Syntax Limitation**: SWO search does **not** support regex or wildcards. Only text matching with boolean operators (AND/OR/NOT). This is documented in all `--query` help text.
 
 **Default Output Location**: When no `--output` specified, logs write to `~/.cache/paperctl/logs/<system>.<ext>` for persistence.
 
@@ -103,7 +106,7 @@ GitHub Actions automatically publishes to PyPI via trusted publishing (OIDC).
 - Use `pytest-httpx` for mocking HTTP requests
 - Tests live in `tests/` with corresponding structure to `src/paperctl/`
 - Coverage requirement: tests run with `--cov=paperctl` (configured in pyproject.toml)
-- Mock the Papertrail API responses, don't make real requests
+- Mock the SWO API responses, don't make real requests
 
 ## Configuration Files
 
@@ -117,5 +120,8 @@ GitHub Actions automatically publishes to PyPI via trusted publishing (OIDC).
 1. **Don't add `uv pip install`** - Use `uv sync` or `uv add/remove` instead
 2. **Don't manually edit dependencies in pyproject.toml** - Use `uv add <pkg>` or `uv remove <pkg>`
 3. **Pre-commit hooks use prek, not pre-commit** - This is a Rust-native faster alternative
-4. **Search queries don't support regex** - Users sometimes ask for wildcards like `*vmprod*`, but Papertrail only supports text matching
-5. **Rate limiting is per-account, not per-request** - The 25 req/5s limit applies globally across parallel downloads
+4. **Search queries don't support regex** - Users sometimes ask for wildcards like `*vmprod*`, but SWO only supports text matching
+5. **Rate limiting is per-account, not per-request** - The limit applies globally across parallel downloads
+6. **Auth is Bearer token** - Use `Authorization: Bearer {token}`, not `X-Papertrail-Token`
+7. **Entity IDs are strings** - Not integers like old Papertrail system IDs
+8. **Env var is `SWO_API_TOKEN`** - Not `PAPERTRAIL_API_TOKEN`

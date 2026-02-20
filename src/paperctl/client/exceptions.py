@@ -1,15 +1,15 @@
-"""Custom exceptions for Papertrail client."""
+"""Custom exceptions for SolarWinds Observability client."""
 
 
-class PapertrailError(Exception):
-    """Base exception for Papertrail errors."""
+class SWOError(Exception):
+    """Base exception for SolarWinds Observability errors."""
 
 
-class AuthenticationError(PapertrailError):
+class AuthenticationError(SWOError):
     """Raised when authentication fails."""
 
 
-class RateLimitError(PapertrailError):
+class RateLimitError(SWOError):
     """Raised when rate limit is exceeded."""
 
     def __init__(self, retry_after: int | None = None) -> None:
@@ -17,7 +17,7 @@ class RateLimitError(PapertrailError):
         super().__init__(f"Rate limit exceeded. Retry after {retry_after}s")
 
 
-class APIError(PapertrailError):
+class APIError(SWOError):
     """Raised when API returns an error."""
 
     def __init__(self, status_code: int, message: str) -> None:

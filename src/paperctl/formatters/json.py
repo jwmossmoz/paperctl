@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from paperctl.client.models import Archive, Event, Group, System
+from paperctl.client.models import Entity, Event
 
 
 class JSONFormatter:
@@ -20,38 +20,16 @@ class JSONFormatter:
         """
         return json.dumps([e.model_dump(mode="json") for e in events], indent=2)
 
-    def format_systems(self, systems: list[System]) -> str:
-        """Format systems as JSON.
+    def format_entities(self, entities: list[Entity]) -> str:
+        """Format entities as JSON.
 
         Args:
-            systems: Systems to format
+            entities: Entities to format
 
         Returns:
             JSON string
         """
-        return json.dumps([s.model_dump(mode="json") for s in systems], indent=2)
-
-    def format_groups(self, groups: list[Group]) -> str:
-        """Format groups as JSON.
-
-        Args:
-            groups: Groups to format
-
-        Returns:
-            JSON string
-        """
-        return json.dumps([g.model_dump(mode="json") for g in groups], indent=2)
-
-    def format_archives(self, archives: list[Archive]) -> str:
-        """Format archives as JSON.
-
-        Args:
-            archives: Archives to format
-
-        Returns:
-            JSON string
-        """
-        return json.dumps([a.model_dump(mode="json") for a in archives], indent=2)
+        return json.dumps([e.model_dump(mode="json") for e in entities], indent=2)
 
     def format_any(self, data: Any) -> str:
         """Format any data as JSON.

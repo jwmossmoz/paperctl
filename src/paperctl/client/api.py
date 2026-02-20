@@ -1,4 +1,4 @@
-"""Papertrail API client implementation."""
+"""SolarWinds Observability API client implementation."""
 
 from collections.abc import Iterator
 from datetime import datetime
@@ -7,9 +7,11 @@ from typing import Any
 import httpx
 
 from paperctl.client.exceptions import APIError, AuthenticationError, RateLimitError
-from paperctl.client.models import Archive, Event, Group, SearchResponse, System
+from paperctl.client.models import EntitiesResponse, Entity, Event, LogsResponse
 from paperctl.utils.rate_limiter import RateLimiter
 from paperctl.utils.retry import retry_with_backoff
+
+DEFAULT_API_URL = "https://api.na-01.cloud.solarwinds.com"
 
 
 def _should_retry_error(error: Exception) -> bool:
@@ -18,31 +20,32 @@ def _should_retry_error(error: Exception) -> bool:
     return False
 
 
-class PapertrailClient:
-    """Client for interacting with Papertrail API."""
-
-    BASE_URL = "https://papertrailapp.com/api/v1"
+class SWOClient:
+    """Client for interacting with SolarWinds Observability API."""
 
     def __init__(
         self,
         api_token: str,
+        api_url: str = DEFAULT_API_URL,
         timeout: float = 30.0,
         rate_limiter: RateLimiter | None = None,
     ) -> None:
-        """Initialize Papertrail client.
+        """Initialize SWO client.
 
         Args:
-            api_token: Papertrail API token
+            api_token: SolarWinds Observability API token
+            api_url: Base URL for the API
             timeout: Request timeout in seconds
             rate_limiter: Optional rate limiter for API requests
         """
         self.api_token = api_token
+        self.api_url = api_url
         self.timeout = timeout
         self._rate_limiter = rate_limiter or RateLimiter()
         self._client = httpx.Client(
-            base_url=self.BASE_URL,
+            base_url=api_url,
             headers={
-                "X-Papertrail-Token": api_token,
+                "Authorization": f"Bearer {api_token}",
                 "Accept": "application/json",
             },
             timeout=timeout,
@@ -53,15 +56,15 @@ class PapertrailClient:
         method: str,
         endpoint: str,
         params: dict[str, Any] | None = None,
-        json_data: dict[str, Any] | None = None,
+        url: str | None = None,
     ) -> dict[str, Any]:
         """Make an API request with error handling.
 
         Args:
             method: HTTP method
-            endpoint: API endpoint
+            endpoint: API endpoint (ignored if url is provided)
             params: Query parameters
-            json_data: JSON body
+            url: Full URL to request (for pagination)
 
         Returns:
             Response JSON
@@ -73,12 +76,15 @@ class PapertrailClient:
         """
         try:
             self._rate_limiter.acquire()
-            response = self._client.request(
-                method=method,
-                url=endpoint,
-                params=params,
-                json=json_data,
-            )
+
+            if url:
+                response = self._client.request(method=method, url=url)
+            else:
+                response = self._client.request(
+                    method=method,
+                    url=endpoint,
+                    params=params,
+                )
 
             if response.status_code == 401:
                 raise AuthenticationError("Invalid API token")
@@ -101,225 +107,197 @@ class PapertrailClient:
         except httpx.HTTPError as e:
             raise APIError(0, f"HTTP error: {e}") from e
 
-    def _request_raw(
+    def get_logs(
         self,
-        method: str,
-        endpoint: str,
-        params: dict[str, Any] | None = None,
-    ) -> bytes:
-        """Make an API request and return raw bytes.
+        filter_query: str | None = None,
+        hostname: str | None = None,
+        group: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        page_size: int = 1000,
+        direction: str = "backward",
+        page_url: str | None = None,
+    ) -> LogsResponse:
+        """Fetch logs from the API.
 
         Args:
-            method: HTTP method
-            endpoint: API endpoint
-            params: Query parameters
+            filter_query: Filter query string
+            hostname: Filter by hostname (prepended as host:"value")
+            group: Filter by group name
+            start_time: Start time (UTC)
+            end_time: End time (UTC)
+            page_size: Maximum events per page
+            direction: Sort direction (backward or forward)
+            page_url: Full URL for pagination (overrides other params)
 
         Returns:
-            Response content bytes
+            Logs response with events and page info
         """
-        try:
-            self._rate_limiter.acquire()
-            response = self._client.request(
-                method=method,
-                url=endpoint,
-                params=params,
-            )
+        if page_url:
+            data = self._request("GET", "", url=page_url)
+            return LogsResponse.model_validate(data)
 
-            if response.status_code == 401:
-                raise AuthenticationError("Invalid API token")
+        params: dict[str, Any] = {
+            "pageSize": page_size,
+            "direction": direction,
+        }
 
-            if response.status_code == 429:
-                retry_after = response.headers.get("Retry-After")
-                raise RateLimitError(retry_after=int(retry_after) if retry_after else None)
+        # Build filter string
+        filter_parts: list[str] = []
+        if hostname:
+            filter_parts.append(f'host:"{hostname}"')
+        if group:
+            filter_parts.append(f'group:"{group}"')
+        if filter_query:
+            filter_parts.append(filter_query)
 
-            if response.status_code >= 400:
-                raise APIError(response.status_code, response.text)
+        if filter_parts:
+            params["filter"] = " ".join(filter_parts)
 
-            return response.content
+        if start_time:
+            params["startTime"] = start_time.isoformat()
+        if end_time:
+            params["endTime"] = end_time.isoformat()
 
-        except httpx.HTTPError as e:
-            raise APIError(0, f"HTTP error: {e}") from e
+        data = self._request("GET", "/v1/logs", params=params)
+        return LogsResponse.model_validate(data)
 
-    def search(
+    def logs_iter(
         self,
-        query: str | None = None,
-        system_id: int | None = None,
-        group_id: int | None = None,
-        min_time: datetime | None = None,
-        max_time: datetime | None = None,
-        limit: int = 1000,
-        min_id: str | None = None,
-        max_id: str | None = None,
-    ) -> SearchResponse:
-        """Search for log events.
-
-        Args:
-            query: Search query
-            system_id: Filter by system ID
-            group_id: Filter by group ID
-            min_time: Start time (UTC)
-            max_time: End time (UTC)
-            limit: Maximum events per request
-            min_id: Minimum event ID for pagination
-            max_id: Maximum event ID for pagination
-
-        Returns:
-            Search response with events
-        """
-        params: dict[str, Any] = {"limit": limit}
-
-        if query:
-            params["q"] = query
-        if system_id:
-            params["system_id"] = system_id
-        if group_id:
-            params["group_id"] = group_id
-        if min_time:
-            params["min_time"] = int(min_time.timestamp())
-        if max_time:
-            params["max_time"] = int(max_time.timestamp())
-        if min_id:
-            params["min_id"] = min_id
-        if max_id:
-            params["max_id"] = max_id
-
-        data = self._request("GET", "/events/search.json", params=params)
-        return SearchResponse.model_validate(data)
-
-    def search_iter(
-        self,
-        query: str | None = None,
-        system_id: int | None = None,
-        group_id: int | None = None,
-        min_time: datetime | None = None,
-        max_time: datetime | None = None,
+        filter_query: str | None = None,
+        hostname: str | None = None,
+        group: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         total_limit: int | None = None,
-        page_limit: int = 1000,
+        page_size: int = 1000,
     ) -> Iterator[Event]:
-        """Iterate through search results with automatic pagination.
+        """Iterate through logs with automatic pagination.
 
         Args:
-            query: Search query
-            system_id: Filter by system ID
-            group_id: Filter by group ID
-            min_time: Start time (UTC)
-            max_time: End time (UTC)
+            filter_query: Filter query string
+            hostname: Filter by hostname
+            group: Filter by group name
+            start_time: Start time (UTC)
+            end_time: End time (UTC)
             total_limit: Maximum events to return (None for no limit)
-            page_limit: Maximum events per request
+            page_size: Maximum events per page
 
         Yields:
             Individual log events
         """
-        max_id = None
+        next_page: str | None = None
         total_events = 0
 
         while True:
             if total_limit is not None and total_limit <= total_events:
                 break
 
-            request_limit = page_limit
+            request_size = page_size
             if total_limit is not None:
-                request_limit = min(page_limit, max(total_limit - total_events, 0))
+                request_size = min(page_size, max(total_limit - total_events, 0))
 
-            def do_search(
-                request_limit: int = request_limit, max_id: str | None = max_id
-            ) -> SearchResponse:
-                return self.search(
-                    query=query,
-                    system_id=system_id,
-                    group_id=group_id,
-                    min_time=min_time,
-                    max_time=max_time,
-                    limit=request_limit,
-                    max_id=max_id,
+            def do_fetch(
+                request_size: int = request_size,
+                next_page: str | None = next_page,
+            ) -> LogsResponse:
+                return self.get_logs(
+                    filter_query=filter_query,
+                    hostname=hostname,
+                    group=group,
+                    start_time=start_time,
+                    end_time=end_time,
+                    page_size=request_size,
+                    page_url=next_page,
                 )
 
             response = retry_with_backoff(
-                do_search,
+                do_fetch,
                 retry_if=_should_retry_error,
             )
 
-            if not response.events:
+            if not response.logs:
                 break
 
-            for event in response.events:
+            for event in response.logs:
                 yield event
                 total_events += 1
                 if total_limit is not None and total_events >= total_limit:
                     return
 
-            if response.reached_beginning or response.reached_time_limit:
+            if not response.page_info.next_page:
                 break
 
-            max_id = response.min_id
+            next_page = response.page_info.next_page
 
-    def list_systems(self) -> list[System]:
-        """List all systems.
-
-        Returns:
-            List of systems
-        """
-        data = self._request("GET", "/systems.json")
-        return [System.model_validate(s) for s in data]
-
-    def get_system(self, system_id: int) -> System:
-        """Get system details.
+    def list_entities(
+        self,
+        entity_type: str = "Host",
+        name: str | None = None,
+        page_size: int = 100,
+    ) -> list[Entity]:
+        """List entities, auto-paginating through all pages.
 
         Args:
-            system_id: System ID
+            entity_type: Entity type filter (e.g., "Host")
+            name: Optional name filter
+            page_size: Page size for each request
 
         Returns:
-            System details
+            List of all entities
         """
-        data = self._request("GET", f"/systems/{system_id}.json")
-        return System.model_validate(data)
+        params: dict[str, Any] = {
+            "type": entity_type,
+            "pageSize": page_size,
+        }
+        if name:
+            params["name"] = name
 
-    def list_groups(self) -> list[Group]:
-        """List all groups.
+        all_entities: list[Entity] = []
+        next_page: str | None = None
 
-        Returns:
-            List of groups
-        """
-        data = self._request("GET", "/groups.json")
-        return [Group.model_validate(g) for g in data]
+        while True:
+            if next_page:
+                data = self._request("GET", "", url=next_page)
+            else:
+                data = self._request("GET", "/v1/entities", params=params)
 
-    def get_group(self, group_id: int) -> Group:
-        """Get group details.
+            resp = EntitiesResponse.model_validate(data)
+            all_entities.extend(resp.entities)
+
+            if not resp.page_info.next_page:
+                break
+            next_page = resp.page_info.next_page
+
+        return all_entities
+
+    def get_entity(self, entity_id: str) -> Entity:
+        """Get entity details.
 
         Args:
-            group_id: Group ID
+            entity_id: Entity ID
 
         Returns:
-            Group details with systems
+            Entity details
         """
-        data = self._request("GET", f"/groups/{group_id}.json")
-        return Group.model_validate(data)
+        data = self._request("GET", f"/v1/entities/{entity_id}")
+        return Entity.model_validate(data)
 
-    def list_archives(self) -> list[Archive]:
-        """List available archives.
+    def list_entity_types(self) -> list[str]:
+        """List available entity types.
 
         Returns:
-            List of archives
+            List of entity type strings
         """
-        data = self._request("GET", "/archives.json")
-        return [Archive.model_validate(a) for a in data]
-
-    def download_archive(self, filename: str) -> bytes:
-        """Download an archive file.
-
-        Args:
-            filename: Archive filename
-
-        Returns:
-            Archive file content
-        """
-        return self._request_raw("GET", f"/archives/{filename}/download")
+        data = self._request("GET", "/v1/metadata/entities/types")
+        types: list[str] = data.get("types", data) if isinstance(data, dict) else data
+        return types
 
     def close(self) -> None:
         """Close the HTTP client."""
         self._client.close()
 
-    def __enter__(self) -> "PapertrailClient":
+    def __enter__(self) -> "SWOClient":
         """Context manager entry."""
         return self
 
