@@ -39,7 +39,12 @@ def search_command(
         pathlib.Path | None, typer.Option("--file", "-F", help="Write output to file")
     ] = None,
     api_token: Annotated[
-        str | None, typer.Option("--token", envvar="SWO_API_TOKEN", help="API token")
+        str | None,
+        typer.Option(
+            "--token",
+            envvar="SWO_API_TOKEN",
+            help="API token (SWO_API_TOKEN or legacy PAPERTRAIL_API_TOKEN)",
+        ),
     ] = None,
 ) -> None:
     """Search SolarWinds Observability logs.
@@ -201,7 +206,12 @@ def tail_command(
         str, typer.Option("--output", "-o", help="Output format: text|json|csv")
     ] = "text",
     api_token: Annotated[
-        str | None, typer.Option("--token", envvar="SWO_API_TOKEN", help="API token")
+        str | None,
+        typer.Option(
+            "--token",
+            envvar="SWO_API_TOKEN",
+            help="API token (SWO_API_TOKEN or legacy PAPERTRAIL_API_TOKEN)",
+        ),
     ] = None,
 ) -> None:
     """Tail SolarWinds Observability logs (alias for search --follow).

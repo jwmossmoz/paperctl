@@ -29,7 +29,12 @@ def list_entities(
         str, typer.Option("--output", "-o", help="Output format: text|json|csv")
     ] = "text",
     api_token: Annotated[
-        str | None, typer.Option("--token", envvar="SWO_API_TOKEN", help="API token")
+        str | None,
+        typer.Option(
+            "--token",
+            envvar="SWO_API_TOKEN",
+            help="API token (SWO_API_TOKEN or legacy PAPERTRAIL_API_TOKEN)",
+        ),
     ] = None,
 ) -> None:
     """List entities.
@@ -74,7 +79,12 @@ def show_entity(
         str, typer.Option("--output", "-o", help="Output format: text|json|csv")
     ] = "text",
     api_token: Annotated[
-        str | None, typer.Option("--token", envvar="SWO_API_TOKEN", help="API token")
+        str | None,
+        typer.Option(
+            "--token",
+            envvar="SWO_API_TOKEN",
+            help="API token (SWO_API_TOKEN or legacy PAPERTRAIL_API_TOKEN)",
+        ),
     ] = None,
 ) -> None:
     """Show entity details.
@@ -121,7 +131,12 @@ def show_entity(
 @entities_app.command("list-types")
 def list_entity_types(
     api_token: Annotated[
-        str | None, typer.Option("--token", envvar="SWO_API_TOKEN", help="API token")
+        str | None,
+        typer.Option(
+            "--token",
+            envvar="SWO_API_TOKEN",
+            help="API token (SWO_API_TOKEN or legacy PAPERTRAIL_API_TOKEN)",
+        ),
     ] = None,
 ) -> None:
     """List available entity types.

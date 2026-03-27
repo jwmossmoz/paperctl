@@ -1,6 +1,6 @@
 [project]
 name = "paperctl"
-version = "2.0.0"
+version = "2.0.1"
 description = "CLI tool for querying SolarWinds Observability logs"
 readme = "README.md"
 authors = [

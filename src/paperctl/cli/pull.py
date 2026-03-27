@@ -44,7 +44,12 @@ def pull_command(
         ),
     ] = None,
     api_token: Annotated[
-        str | None, typer.Option("--token", envvar="SWO_API_TOKEN", help="API token")
+        str | None,
+        typer.Option(
+            "--token",
+            envvar="SWO_API_TOKEN",
+            help="API token (SWO_API_TOKEN or legacy PAPERTRAIL_API_TOKEN)",
+        ),
     ] = None,
 ) -> None:
     """Pull logs from one or more systems.

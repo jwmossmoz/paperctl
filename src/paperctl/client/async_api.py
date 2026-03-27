@@ -83,7 +83,12 @@ class AsyncSWOClient:
                 response = await self._client.request(method=method, url=endpoint, params=params)
 
             if response.status_code == 401:
-                raise AuthenticationError("Invalid API token")
+                raise AuthenticationError(
+                    "Invalid API token for SolarWinds Observability. "
+                    "paperctl 2.x accepts SWO_API_TOKEN and the legacy "
+                    "PAPERTRAIL_API_TOKEN env var name, but the token itself "
+                    "must still be valid for the SWO API."
+                )
 
             if response.status_code == 429:
                 retry_after = response.headers.get("Retry-After")

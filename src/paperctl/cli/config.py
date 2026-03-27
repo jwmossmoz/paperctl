@@ -48,6 +48,7 @@ def show_config() -> None:
 
         console.print("\n[bold]Environment variables:[/bold]")
         console.print("  SWO_API_TOKEN")
+        console.print("  PAPERTRAIL_API_TOKEN [dim](legacy alias)[/dim]")
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -62,7 +63,7 @@ def init_config(
             "--token",
             prompt="SolarWinds Observability API token",
             hide_input=True,
-            help="SWO API token",
+            help="SWO API token (or use PAPERTRAIL_API_TOKEN as a legacy alias)",
         ),
     ],
     api_url: Annotated[

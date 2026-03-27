@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_API_URL = "https://api.na-01.cloud.solarwinds.com"
@@ -18,8 +18,8 @@ class Settings(BaseSettings):
 
     api_token: str = Field(
         default="",
-        description="SolarWinds Observability API token",
-        validation_alias="SWO_API_TOKEN",
+        description="SolarWinds Observability API token (supports legacy env alias)",
+        validation_alias=AliasChoices("SWO_API_TOKEN", "PAPERTRAIL_API_TOKEN"),
     )
     api_url: str = Field(
         default=DEFAULT_API_URL,
@@ -95,9 +95,10 @@ def get_settings(**overrides: Any) -> Settings:
     Configuration priority (highest to lowest):
     1. Keyword arguments (overrides)
     2. Environment variable (SWO_API_TOKEN)
-    3. Local config (./paperctl.toml)
-    4. Home config (~/.paperctl.toml)
-    5. XDG config (~/.config/paperctl/config.toml)
+    3. Environment variable legacy alias (PAPERTRAIL_API_TOKEN)
+    4. Local config (./paperctl.toml)
+    5. Home config (~/.paperctl.toml)
+    6. XDG config (~/.config/paperctl/config.toml)
 
     Args:
         **overrides: Override specific settings
@@ -110,8 +111,11 @@ def get_settings(**overrides: Any) -> Settings:
     for config_path in reversed(get_config_paths()):
         config_data.update(load_config_file(config_path))
 
-    # Merge with overrides
-    config_data.update(overrides)
+    # Create settings from env vars plus config files first.
+    settings = Settings(**config_data)
 
-    # Create settings (env vars take precedence via pydantic-settings)
-    return Settings(**config_data)
+    # Explicit overrides should win over both env vars and config files.
+    if overrides:
+        return settings.model_copy(update=overrides)
+
+    return settings

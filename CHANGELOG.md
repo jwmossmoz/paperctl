@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-03-27
+
+### Fixed
+- Accept `PAPERTRAIL_API_TOKEN` as a legacy environment-variable alias in 2.x
+- Clarify authentication errors when a token is not valid for the SolarWinds Observability API
+- Update README and config messaging to match the actual 2.x CLI and migration path
+
 ## [2.0.0] - 2026-02-20
 
 ### Changed
@@ -90,7 +97,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full type hints with Pydantic models
 - Comprehensive test coverage
 
-[Unreleased]: https://github.com/jwmossmoz/paperctl/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/jwmossmoz/paperctl/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/jwmossmoz/paperctl/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/jwmossmoz/paperctl/compare/v1.2.0...v2.0.0
 [1.2.0]: https://github.com/jwmossmoz/paperctl/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/jwmossmoz/paperctl/compare/v1.1.0...v1.1.1

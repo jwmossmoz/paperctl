@@ -5,7 +5,7 @@
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![CI](https://github.com/jwmossmoz/paperctl/workflows/CI/badge.svg)](https://github.com/jwmossmoz/paperctl/actions)
 
-Download logs from Papertrail. Built with Typer, httpx, and Pydantic.
+Download logs from SolarWinds Observability. Built with Typer, httpx, and Pydantic.
 
 ## Installation
 
@@ -31,119 +31,113 @@ uv pip install -e .
 
 ## Quick Start
 
-Set your Papertrail API token:
+`paperctl` 2.x talks to the SolarWinds Observability logs API.
+
+Set your API token:
 
 ```bash
-export PAPERTRAIL_API_TOKEN="your_token_here"
+export SWO_API_TOKEN="your_token_here"
 ```
 
-Pull logs from a single system:
+For easier upgrades from 1.x, `PAPERTRAIL_API_TOKEN` is also accepted as a legacy
+environment-variable alias. The token itself still needs to be valid for the SWO API.
+
+Pull logs from a single host:
 
 ```bash
-paperctl pull web-1                    # Last hour to stdout
-paperctl pull web-1 --output logs.txt  # Save to file
-paperctl pull web-1 --since -24h       # Custom time range
+paperctl pull web-1
+paperctl pull web-1 --output logs.txt
+paperctl pull web-1 --since -24h
 ```
 
-Pull from multiple systems in parallel:
+Search logs across all hosts or a specific host:
 
 ```bash
-# Download from three systems at once
-paperctl pull web-1,web-2,web-3 --output logs/
-
-# Search across multiple systems
-paperctl pull web-1,web-2,db-1 --query "error" --output errors/
-
-# Works with any combination
-paperctl pull prod-*,staging-* --since -1h --output recent/
+paperctl search "error AND timeout" --since -1h
+paperctl search --system web-1 "startup finished" --since -24h
 ```
 
-When you specify multiple systems, paperctl downloads them in parallel with automatic rate limiting (Papertrail allows 25 requests per 5 seconds). Each system gets its own file in the output directory.
+List available hosts via the entities API:
+
+```bash
+paperctl entities list --type Host
+paperctl entities list --name web-1 --output json
+```
 
 ## What It Does
 
-- Downloads logs from one or more Papertrail systems
-- Handles pagination automatically (no manual limit setting)
-- Respects API rate limits (25 requests per 5 seconds)
-- Runs parallel downloads when pulling from multiple systems
-- Parses relative times like `-1h` or `2 days ago`
+- Queries SolarWinds Observability logs with automatic pagination
+- Pulls logs from one or more hosts, with parallel downloads for multi-host pulls
+- Resolves partial hostnames such as Taskcluster VM IDs
+- Parses relative times like `-1h` and ISO timestamps
 - Outputs as text, JSON, or CSV
+
+## Migration From 1.x
+
+Version 2.x is a breaking change:
+
+- Auth header changed from `X-Papertrail-Token` to `Authorization: Bearer`
+- API base URL changed from `papertrailapp.com` to SolarWinds Observability
+- `systems`/`groups`/`archives` commands were replaced by `entities`
+- `PAPERTRAIL_API_TOKEN` is only a legacy env-var alias now; the token itself must be valid for SWO
 
 ## Commands
 
 ### pull
 
-Download logs from systems.
+Download logs from one or more hosts.
 
 ```bash
 paperctl pull <system>[,<system>...] [OPTIONS]
 
 Arguments:
-  <system>              System name(s) or ID(s), comma-separated
+  <system>              System name(s), comma-separated
 
 Options:
   -o, --output PATH     Output file (single system) or directory (multiple)
-  --since TEXT          Start time (default: -1h)
+  --since TEXT          Start time (default: all logs)
   --until TEXT          End time (default: now)
   -f, --format TEXT     Output format: text|json|csv (default: text)
   -q, --query TEXT      Search query filter
 ```
 
-**Examples:**
+Examples:
 
 ```bash
-# Single system
 paperctl pull web-1
-paperctl pull web-1 --output logs.txt
-paperctl pull web-1 --query "error" --since -24h
-
-# Multiple systems (parallel)
-paperctl pull web-1,web-2,web-3 --output logs/
-paperctl pull prod-api,prod-worker --query "500" --output errors/
+paperctl pull vm-abc123 --since -24h
+paperctl pull web-1,web-2 --output logs/
 ```
 
 ### search
 
-Search logs with filters.
+Search logs with optional host filtering.
 
 ```bash
 paperctl search [QUERY] [OPTIONS]
 
 Options:
-  -s, --system TEXT     Filter by system name or ID
-  -g, --group TEXT      Filter by group name or ID
+  -s, --system TEXT     Filter by system name
   --since TEXT          Start time
   --until TEXT          End time
   -n, --limit INTEGER   Maximum events
   -o, --output TEXT     Output format
-  -F, --file PATH       Write to file
+  -F, --file PATH       Write output to file
 ```
 
-### systems
+### tail
 
-List systems or show details.
+Tail logs. This is currently an alias for `search --follow`.
 
-```bash
-paperctl systems list              # List all systems
-paperctl systems show <id>         # Show system details
-```
+### entities
 
-### groups
-
-List groups or show details.
+List and inspect entities such as hosts.
 
 ```bash
-paperctl groups list               # List all groups
-paperctl groups show <id>          # Show group with systems
-```
-
-### archives
-
-Download historical archives.
-
-```bash
-paperctl archives list                        # List available archives
-paperctl archives download <filename>         # Download archive
+paperctl entities list
+paperctl entities list --type Host --output json
+paperctl entities show <entity-id>
+paperctl entities list-types
 ```
 
 ### config
@@ -151,25 +145,27 @@ paperctl archives download <filename>         # Download archive
 Manage configuration.
 
 ```bash
-paperctl config show               # Show current config
-paperctl config init               # Initialize config file
+paperctl config show
+paperctl config init
 ```
 
 ## Configuration
 
-Configuration is loaded from (highest priority first):
+Configuration is loaded from highest to lowest priority:
 
 1. CLI arguments
-2. Environment variable: `PAPERTRAIL_API_TOKEN`
-3. Local config: `./paperctl.toml`
-4. Home config: `~/.paperctl.toml`
-5. XDG config: `~/.config/paperctl/config.toml`
+2. `SWO_API_TOKEN`
+3. `PAPERTRAIL_API_TOKEN` as a legacy alias
+4. Local config: `./paperctl.toml`
+5. Home config: `~/.paperctl.toml`
+6. XDG config: `~/.config/paperctl/config.toml`
 
 Create `~/.paperctl.toml`:
 
 ```toml
 api_token = "your_token_here"
-timeout = 30.0  # Optional: API timeout in seconds
+api_url = "https://api.na-01.cloud.solarwinds.com"
+timeout = 30.0
 ```
 
 ## Time Formats
@@ -228,7 +224,7 @@ Mozilla Public License 2.0 - see [LICENSE](LICENSE) for details.
 
 - **GitHub**: https://github.com/jwmossmoz/paperctl
 - **PyPI**: https://pypi.org/project/paperctl/
-- **Papertrail API**: https://www.papertrail.com/help/http-api/
+- **SolarWinds Observability**: https://documentation.solarwinds.com/en/success_center/observability/default.htm
 
 ## Author
 
