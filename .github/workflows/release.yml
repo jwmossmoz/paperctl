@@ -32,6 +32,32 @@ jobs:
       - name: Set up Python
         run: uv python install 3.11
 
+      - name: Validate tag matches package version
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import sys
+          import tomllib
+
+          with open("pyproject.toml", "rb") as f:
+              version = tomllib.load(f)["project"]["version"]
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          expected = f"v{version}"
+
+          if tag != expected:
+              print(
+                  f"Release tag {tag} does not match package version {version} "
+                  f"(expected {expected}).",
+                  file=sys.stderr,
+              )
+              raise SystemExit(1)
+
+          print(f"Validated release tag {tag} for package version {version}.")
+          PY
+
       - name: Build package
         run: uv build
 
