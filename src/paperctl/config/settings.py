@@ -1,5 +1,6 @@
 """Settings management with config file and environment variable support."""
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,
     )
 
     @field_validator("api_token")
@@ -106,16 +108,19 @@ def get_settings(**overrides: Any) -> Settings:
     Returns:
         Settings instance
     """
-    # Load from config files
+    # Load from config files.
     config_data: dict[str, Any] = {}
     for config_path in reversed(get_config_paths()):
         config_data.update(load_config_file(config_path))
 
-    # Create settings from env vars plus config files first.
-    settings = Settings(**config_data)
+    # BaseSettings treats explicit init data as higher priority than
+    # environment variables, so merge sources here to preserve our documented
+    # order while still accepting api_token from config files.
+    env_data: dict[str, Any] = {}
+    if swo_token := os.getenv("SWO_API_TOKEN"):
+        env_data["api_token"] = swo_token
+    elif papertrail_token := os.getenv("PAPERTRAIL_API_TOKEN"):
+        env_data["api_token"] = papertrail_token
 
-    # Explicit overrides should win over both env vars and config files.
-    if overrides:
-        return settings.model_copy(update=overrides)
-
-    return settings
+    settings_data = config_data | env_data | overrides
+    return Settings(**settings_data)
