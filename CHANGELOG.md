@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-05-15
+
+### Fixed
+- Accept null `prevPage` and `nextPage` values returned by the SolarWinds Observability API
+- Load `api_token` values from config files written by `paperctl config init`
+- Preserve documented configuration priority so explicit overrides and environment variables win over config files
+- Fall back to direct hostname filtering when the entities API returns no `Host` entities
+
 ## [2.0.1] - 2026-03-27
 
 ### Fixed
@@ -97,7 +105,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full type hints with Pydantic models
 - Comprehensive test coverage
 
-[Unreleased]: https://github.com/jwmossmoz/paperctl/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/jwmossmoz/paperctl/compare/v2.0.2...HEAD
+[2.0.2]: https://github.com/jwmossmoz/paperctl/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/jwmossmoz/paperctl/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/jwmossmoz/paperctl/compare/v1.2.0...v2.0.0
 [1.2.0]: https://github.com/jwmossmoz/paperctl/compare/v1.1.1...v1.2.0
