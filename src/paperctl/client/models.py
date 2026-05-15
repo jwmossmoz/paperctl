@@ -18,8 +18,8 @@ class Event(BaseModel):
 class PageInfo(BaseModel):
     """Pagination info from SolarWinds Observability API."""
 
-    prev_page: str = Field(default="", alias="prevPage")
-    next_page: str = Field(default="", alias="nextPage")
+    prev_page: str | None = Field(default=None, alias="prevPage")
+    next_page: str | None = Field(default=None, alias="nextPage")
 
     model_config = {"populate_by_name": True}
 

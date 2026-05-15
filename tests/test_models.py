@@ -47,10 +47,17 @@ def test_page_info_aliases() -> None:
 
 
 def test_page_info_empty() -> None:
-    """Test PageInfo defaults to empty strings."""
+    """Test PageInfo defaults to None when fields are missing."""
     page_info = PageInfo.model_validate({})
-    assert page_info.prev_page == ""
-    assert page_info.next_page == ""
+    assert page_info.prev_page is None
+    assert page_info.next_page is None
+
+
+def test_page_info_null_pages() -> None:
+    """SWO returns null for prevPage/nextPage when no further page exists."""
+    page_info = PageInfo.model_validate({"prevPage": None, "nextPage": None})
+    assert page_info.prev_page is None
+    assert page_info.next_page is None
 
 
 def test_logs_response() -> None:
