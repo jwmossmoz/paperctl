@@ -8,6 +8,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from paperctl.cli.hosts import resolve_hostname_from_entities
 from paperctl.client import SWOClient
 from paperctl.config import get_settings
 from paperctl.formatters import TextFormatter
@@ -70,19 +71,27 @@ def search_command(
 
             if system:
                 entities = retry_with_backoff(lambda: client.list_entities(entity_type="Host"))
-                matching = [e for e in entities if e.name == system]
-                if not matching:
-                    # Try partial match
-                    matching = [e for e in entities if system.lower() in e.name.lower()]
-                if not matching:
+                resolution = resolve_hostname_from_entities(system, entities)
+                if resolution.hostname is None:
+                    if resolution.ambiguous_matches:
+                        console.print(f"[yellow]Multiple systems match '{system}':[/yellow]")
+                        for match in resolution.ambiguous_matches[:10]:
+                            console.print(f"  - {match}")
+                    else:
+                        console.print(f"[red]System not found: {system}[/red]")
+                    raise typer.Exit(1) from None
+
+                hostname = resolution.hostname
+                if resolution.was_partial:
+                    console.print(f"[dim]Matched '{system}' -> {hostname}[/dim]")
+                elif resolution.used_direct_fallback:
+                    console.print(
+                        f"[dim]No Host entities returned; querying '{system}' directly[/dim]"
+                    )
+
+                if not hostname:
                     console.print(f"[red]System not found: {system}[/red]")
                     raise typer.Exit(1) from None
-                if len(matching) > 1:
-                    console.print(f"[yellow]Multiple systems match '{system}':[/yellow]")
-                    for e in matching[:10]:
-                        console.print(f"  - {e.name}")
-                    raise typer.Exit(1) from None
-                hostname = matching[0].name
 
             if follow:
                 console.print("[yellow]Tail mode not yet implemented[/yellow]")
