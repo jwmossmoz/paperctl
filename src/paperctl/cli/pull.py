@@ -9,6 +9,7 @@ import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TaskID, TextColumn
 
+from paperctl.cli.hosts import resolve_hostname_from_entities
 from paperctl.client import SWOClient
 from paperctl.client.async_api import AsyncSWOClient
 from paperctl.client.models import Entity, Event
@@ -175,6 +176,10 @@ async def _pull_multiple_systems(
         ) as client:
             console.print("Looking up systems...")
             entity_list = await client.list_entities(entity_type="Host")
+            if not entity_list:
+                console.print(
+                    "[dim]No Host entities returned; querying requested hostnames directly[/dim]"
+                )
 
             resolved_systems: list[str] = []
             for system in systems:
@@ -275,15 +280,13 @@ def _resolve_hostname(client: SWOClient, system: str) -> tuple[str, bool]:
         progress.add_task(description="Looking up system...", total=None)
         entities = retry_with_backoff(lambda: client.list_entities(entity_type="Host"))
 
-    # Try exact match first
-    exact = [e for e in entities if e.name == system]
-    if exact:
-        return exact[0].name, False
+    resolution = resolve_hostname_from_entities(system, entities)
+    if resolution.hostname is not None:
+        if resolution.used_direct_fallback:
+            console.print(f"[dim]No Host entities returned; querying '{system}' directly[/dim]")
+        return resolution.hostname, resolution.was_partial
 
-    # Try partial/substring match (case-insensitive)
-    partial = [e for e in entities if system.lower() in e.name.lower()]
-
-    if not partial:
+    if not resolution.ambiguous_matches:
         console.print(f"[red]System not found: {system}[/red]")
         console.print("\n[yellow]Available systems:[/yellow]")
         for e in entities[:10]:
@@ -292,15 +295,12 @@ def _resolve_hostname(client: SWOClient, system: str) -> tuple[str, bool]:
             console.print(f"  ... and {len(entities) - 10} more")
         raise typer.Exit(1)
 
-    if len(partial) == 1:
-        return partial[0].name, True
-
     # Multiple matches
     console.print(f"[yellow]Multiple systems match '{system}':[/yellow]")
-    for e in partial[:10]:
-        console.print(f"  - {e.name}")
-    if len(partial) > 10:
-        console.print(f"  ... and {len(partial) - 10} more")
+    for match in resolution.ambiguous_matches[:10]:
+        console.print(f"  - {match}")
+    if len(resolution.ambiguous_matches) > 10:
+        console.print(f"  ... and {len(resolution.ambiguous_matches) - 10} more")
     console.print("\n[yellow]Please provide a more specific name.[/yellow]")
     raise typer.Exit(1)
 
@@ -311,18 +311,7 @@ def _resolve_hostname_from_list(system: str, entities: list[Entity]) -> str | No
     Returns:
         Hostname string, or None if not found/ambiguous
     """
-    # Try exact match
-    for e in entities:
-        if e.name == system:
-            return e.name
-
-    # Try partial/substring match (case-insensitive)
-    partial = [e for e in entities if system.lower() in e.name.lower()]
-
-    if len(partial) == 1:
-        return partial[0].name
-
-    return None
+    return resolve_hostname_from_entities(system, entities).hostname
 
 
 def _resolve_output_path(system: str, output: Path | None, format: str) -> Path:
